@@ -33,11 +33,14 @@ class AppAssets {
   static const String wifi = 'lib/assets/images/Wifi.png';
 
   // Profile Page Assets
-  static const String generalSettings = 'lib/assets/images/General settings.png';
-  static const String accountSettings = 'lib/assets/images/Account settings.png';
+  static const String generalSettings =
+      'lib/assets/images/General settings.png';
+  static const String accountSettings =
+      'lib/assets/images/Account settings.png';
   static const String riseTicket = 'lib/assets/images/Rise ticket.png';
   static const String changePassword = 'lib/assets/images/Change password.png';
-  static const String configureAlerts = 'lib/assets/images/Configure Alerts.png';
+  static const String configureAlerts =
+      'lib/assets/images/Configure Alerts.png';
   static const String notificationss = 'lib/assets/images/Notficationss.png';
   static const String liveHistory = 'lib/assets/images/Live history.png';
   static const String vehicleSize = 'lib/assets/images/Vehicle size.png';
@@ -48,4 +51,25 @@ class AppAssets {
   static const String distance = 'lib/assets/images/Distance.png';
   static const String logout = 'lib/assets/images/Logout.png';
   static const String whatsapp = 'lib/assets/images/whatsapp.png';
+
+  // Statistics Page Assets
+  static const String routeLength = 'lib/assets/images/Route length.png';
+  static const String moveDuration = 'lib/assets/images/Move duration.png';
+  static const String idleDuration = 'lib/assets/images/Idle duration.png';
+  static const String stopDuration = 'lib/assets/images/Stop duration.png';
+  static const String stopCount = 'lib/assets/images/Stop count.png';
+  static const String averageSpeed = 'lib/assets/images/Average speed.png';
+  static const String topSpeed = 'lib/assets/images/Top speed.png';
+  static const String overSpeedCount = 'lib/assets/images/Over speed count.png';
+  static const String engineHours = 'lib/assets/images/Engine hours.png';
+  static const String odometes = 'lib/assets/images/Odometes.png';
+
+  // Sidebar Menu & Expenses Assets
+  static const String sidebarDashboard = 'lib/assets/images/Dashboard.png';
+  static const String sidebarTracking = 'lib/assets/images/Tracking.png';
+  static const String sidebarReports = 'lib/assets/images/Report.png';
+  static const String sidebarExpenses = 'lib/assets/images/Expenses.png';
+  static const String sidebarGeofence = 'lib/assets/images/Geofence report.png';
+  static const String printImage = 'lib/assets/images/Print.png';
+  static const String carImage = 'lib/assets/images/Car image.png';
 }

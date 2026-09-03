@@ -5,6 +5,20 @@ class DashboardController extends GetxController {
   final RxInt selectedMenuIndex = 0.obs;
   final RxInt selectedVehicleIndex = 0.obs;
 
+  final RxBool isReportsExpanded = false.obs;
+  final RxInt selectedReportSubIndex = 0.obs;
+  final RxString reportStartDate = '28-08-2025 12:00 AM'.obs;
+  final RxString reportEndDate = '28-08-2025 12:00 AM'.obs;
+
+  void toggleReportsExpand() {
+    isReportsExpanded.value = !isReportsExpanded.value;
+  }
+
+  void selectReportSub(int index) {
+    selectedReportSubIndex.value = index;
+    selectedMenuIndex.value = 2; // Reports menu
+  }
+
   final Rx<DashboardModel> dashboardData = DashboardModel(
     userName: 'John Doe',
     summaryList: [

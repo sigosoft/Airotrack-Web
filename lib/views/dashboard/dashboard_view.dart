@@ -6,10 +6,19 @@ import '../../controllers/tracking_controller.dart';
 import '../../utils/custom_media_query.dart';
 import '../tracking/widgets/tracking_card.dart';
 import 'widgets/dashboard_header.dart';
+import 'widgets/daily_reports_view.dart';
 import 'widgets/engine_hours_chart.dart';
+import 'widgets/expenses_view.dart';
 import 'widgets/fleet_status_chart.dart';
+import 'widgets/geofence_reports_view.dart';
+import 'widgets/geofence_view.dart';
+import 'widgets/ignition_reports_view.dart';
+import 'widgets/over_speed_reports_view.dart';
 import 'widgets/sidebar_navigation.dart';
+import 'widgets/stoppage_reports_view.dart';
+import 'widgets/summary_reports_view.dart';
 import 'widgets/travel_distance_chart.dart';
+import 'widgets/trip_reports_view.dart';
 import 'widgets/vehicle_list_card.dart';
 import 'widgets/vehicle_status_cards.dart';
 
@@ -47,10 +56,44 @@ class DashboardView extends StatelessWidget {
                     ),
                   ),
 
-                // Dynamic Main Body Content (Dashboard vs Tracking)
+                // Dynamic Main Body Content (Dashboard vs Tracking vs Reports)
                 Expanded(
                   child: Obx(() {
                     final selectedIndex = controller.selectedMenuIndex.value;
+
+                    if (selectedIndex == 2) {
+                      // --- Reports Screen Body ---
+                      final subIndex = controller.selectedReportSubIndex.value;
+                      if (subIndex == 6) {
+                        return const GeofenceReportsView();
+                      }
+                      if (subIndex == 5) {
+                        return const OverSpeedReportsView();
+                      }
+                      if (subIndex == 4) {
+                        return const SummaryReportsView();
+                      }
+                      if (subIndex == 3) {
+                        return const DailyReportsView();
+                      }
+                      if (subIndex == 2) {
+                        return const TripReportsView();
+                      }
+                      if (subIndex == 1) {
+                        return const StoppageReportsView();
+                      }
+                      return const IgnitionReportsView();
+                    }
+
+                    if (selectedIndex == 4) {
+                      // --- Geofence Screen Body ---
+                      return const GeofenceView();
+                    }
+
+                    if (selectedIndex == 3) {
+                      // --- Expenses Screen Body ---
+                      return const ExpensesView();
+                    }
 
                     if (selectedIndex == 1) {
                       // --- Tracking Screen Body ---
@@ -64,14 +107,17 @@ class DashboardView extends StatelessWidget {
                           children: [
                             // Top Vehicle Summary Status Cards
                             VehicleStatusCards(
-                              summaryList: controller.dashboardData.value.summaryList,
+                              summaryList:
+                                  controller.dashboardData.value.summaryList,
                             ),
                             const SizedBox(height: 16),
 
                             // 2x2 Tracking Cards Grid
                             Obx(() {
-                              final trackingList =
-                                  trackingController.trackingData.value.trackingVehicles;
+                              final trackingList = trackingController
+                                  .trackingData
+                                  .value
+                                  .trackingVehicles;
 
                               return LayoutBuilder(
                                 builder: (context, constraints) {
@@ -79,7 +125,9 @@ class DashboardView extends StatelessWidget {
                                     return Column(
                                       children: trackingList.map((item) {
                                         return Padding(
-                                          padding: const EdgeInsets.only(bottom: 16),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 16,
+                                          ),
                                           child: TrackingCard(data: item),
                                         );
                                       }).toList(),
@@ -113,7 +161,8 @@ class DashboardView extends StatelessWidget {
                         children: [
                           // Row 1: Summary Cards
                           VehicleStatusCards(
-                            summaryList: controller.dashboardData.value.summaryList,
+                            summaryList:
+                                controller.dashboardData.value.summaryList,
                           ),
                           const SizedBox(height: 16),
 
@@ -122,8 +171,12 @@ class DashboardView extends StatelessWidget {
                             builder: (context, constraints) {
                               final vehicleListWidget = Obx(
                                 () => VehicleListCard(
-                                  vehicleList: controller.dashboardData.value.vehicleList,
-                                  selectedIndex: controller.selectedVehicleIndex.value,
+                                  vehicleList: controller
+                                      .dashboardData
+                                      .value
+                                      .vehicleList,
+                                  selectedIndex:
+                                      controller.selectedVehicleIndex.value,
                                   onSelect: controller.selectVehicle,
                                 ),
                               );
@@ -146,10 +199,7 @@ class DashboardView extends StatelessWidget {
                                     child: FleetStatusChart(),
                                   ),
                                   const SizedBox(width: 16),
-                                  Expanded(
-                                    flex: 1,
-                                    child: vehicleListWidget,
-                                  ),
+                                  Expanded(flex: 1, child: vehicleListWidget),
                                 ],
                               );
                             },
@@ -160,10 +210,16 @@ class DashboardView extends StatelessWidget {
                           LayoutBuilder(
                             builder: (context, constraints) {
                               final engineHoursWidget = EngineHoursChart(
-                                dataPoints: controller.dashboardData.value.engineHoursData,
+                                dataPoints: controller
+                                    .dashboardData
+                                    .value
+                                    .engineHoursData,
                               );
                               final travelDistanceWidget = TravelDistanceChart(
-                                dataPoints: controller.dashboardData.value.travelDistanceData,
+                                dataPoints: controller
+                                    .dashboardData
+                                    .value
+                                    .travelDistanceData,
                               );
 
                               if (constraints.maxWidth < 768) {
@@ -179,10 +235,7 @@ class DashboardView extends StatelessWidget {
                               return Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    flex: 1,
-                                    child: engineHoursWidget,
-                                  ),
+                                  Expanded(flex: 1, child: engineHoursWidget),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     flex: 1,

@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../../constants/app_assets.dart';
 import '../../../models/dashboard_model.dart';
 
 class VehicleStatusCards extends StatelessWidget {
   final List<VehicleStatusSummary> summaryList;
 
-  const VehicleStatusCards({
-    super.key,
-    required this.summaryList,
-  });
+  const VehicleStatusCards({super.key, required this.summaryList});
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +18,10 @@ class VehicleStatusCards extends StatelessWidget {
             return Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 4),
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -32,13 +33,12 @@ class VehicleStatusCards extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Vehicle Car Icon
-                    Icon(
-                      Icons.directions_car_rounded,
-                      size: 20,
+                    Image.asset(
+                      AppAssets.carImage,
+                      width: 20,
+                      height: 20,
                       color: color,
                     ),
-                    const SizedBox(height: 4),
                     // Title
                     Text(
                       item.title,

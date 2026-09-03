@@ -2,8 +2,14 @@ import 'package:get/get.dart';
 import '../models/vehicle_detail_model.dart';
 
 class VehicleDetailController extends GetxController {
-  final RxInt selectedTopTab = 0.obs; // 0: History, 1: Alerts, 2: Statistics
+  final RxInt selectedTopTab = (-1).obs; // -1: Vehicle Info Detail, 0: History, 1: Alerts, 2: Statistics
   final RxBool isMapDialogVisible = false.obs;
+  final RxBool isHistoryMapDialogVisible = false.obs;
+  final RxDouble playbackProgress = 0.3.obs;
+  final RxBool isPlaying = false.obs;
+  final RxString playbackSpeed = '1x'.obs;
+  final RxString startDateStr = '28-08-2025 12:00 AM'.obs;
+  final RxString endDateStr = '28-08-2025 12:00 AM'.obs;
 
   final Rx<VehicleDetailData> vehicleDetail = VehicleDetailData(
     vehicleNumber: 'KL 07 D 0518',
@@ -48,5 +54,17 @@ class VehicleDetailController extends GetxController {
 
   void showMapDialog() {
     isMapDialogVisible.value = true;
+  }
+
+  void toggleHistoryMapDialog() {
+    isHistoryMapDialogVisible.value = !isHistoryMapDialogVisible.value;
+  }
+
+  void hideHistoryMapDialog() {
+    isHistoryMapDialogVisible.value = false;
+  }
+
+  void togglePlay() {
+    isPlaying.value = !isPlaying.value;
   }
 }
