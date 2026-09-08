@@ -20,6 +20,25 @@ class NotificationView extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      drawer: isMobile
+          ? Drawer(
+              child: SafeArea(
+                child: Obx(
+                  () => SidebarNavigation(
+                    selectedIndex: dashboardController.selectedMenuIndex.value,
+                    onItemSelected: (index) {
+                      dashboardController.selectMenu(index);
+                      Get.offAllNamed('/dashboard');
+                    },
+                    onSubItemSelected: (_) {
+                      Get.offAllNamed('/dashboard');
+                    },
+                    width: double.infinity,
+                  ),
+                ),
+              ),
+            )
+          : null,
       body: Column(
         children: [
           // 1. Notification Top Header Bar

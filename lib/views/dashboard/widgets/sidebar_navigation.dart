@@ -7,11 +7,15 @@ import '../../../controllers/dashboard_controller.dart';
 class SidebarNavigation extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onItemSelected;
+  final ValueChanged<int>? onSubItemSelected;
+  final double width;
 
   const SidebarNavigation({
     super.key,
     required this.selectedIndex,
     required this.onItemSelected,
+    this.onSubItemSelected,
+    this.width = 200,
   });
 
   @override
@@ -37,7 +41,7 @@ class SidebarNavigation extends StatelessWidget {
     ];
 
     return Container(
-      width: 200,
+      width: width,
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(
@@ -131,6 +135,7 @@ class SidebarNavigation extends StatelessWidget {
                             return InkWell(
                               onTap: () {
                                 controller.selectReportSub(subIdx);
+                                onSubItemSelected?.call(subIdx);
                               },
                               child: Container(
                                 width: double.infinity,

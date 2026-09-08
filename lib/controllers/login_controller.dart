@@ -40,8 +40,6 @@ class LoginController extends GetxController {
 
   @override
   void onClose() {
-    phoneController.dispose();
-    passwordController.dispose();
     super.onClose();
   }
 
@@ -64,8 +62,9 @@ class LoginController extends GetxController {
       Get.offAll(() => const DashboardView());
     } catch (e) {
       AppToast.show('Failed to sign in. Please try again.', isError: true);
-    } finally {
-      isLoading.value = false;
+      if (!isClosed) {
+        isLoading.value = false;
+      }
     }
   }
 

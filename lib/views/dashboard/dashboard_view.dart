@@ -33,6 +33,29 @@ class DashboardView extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      drawer: isMobile
+          ? Drawer(
+              child: SafeArea(
+                child: Obx(
+                  () => SidebarNavigation(
+                    selectedIndex: controller.selectedMenuIndex.value,
+                    onItemSelected: (index) {
+                      controller.selectMenu(index);
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    onSubItemSelected: (_) {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    width: double.infinity,
+                  ),
+                ),
+              ),
+            )
+          : null,
       body: Column(
         children: [
           // 1. Header Bar

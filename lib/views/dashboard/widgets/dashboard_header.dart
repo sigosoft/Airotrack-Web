@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
+import '../../../utils/custom_media_query.dart';
 import '../../notification/notification_view.dart';
 import '../../profile/profile_view.dart';
 
@@ -9,47 +10,73 @@ class DashboardHeader extends StatelessWidget {
   final String userName;
   final VoidCallback? onNotificationTap;
   final VoidCallback? onProfileTap;
+  final VoidCallback? onMenuTap;
 
   const DashboardHeader({
     super.key,
     this.userName = 'John Doe',
     this.onNotificationTap,
     this.onProfileTap,
+    this.onMenuTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = CustomMediaQuery.isMobile(context);
+
     return Container(
       height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left: AIR TRACK Logo
-          Image.asset(
-            AppAssets.logo,
-            height: 38,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => Row(
-              children: const [
-                Icon(Icons.location_on, color: AppColors.buttonBlue, size: 28),
-                SizedBox(width: 6),
-                Text(
-                  'AIR TRACK',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+          // Left: Menu Button (Mobile) + AIR TRACK Logo
+          Row(
+            children: [
+              if (isMobile) ...[
+                Builder(
+                  builder: (context) => IconButton(
+                    icon: const Icon(
+                      Icons.menu_rounded,
+                      color: Color(0xFF344054),
+                      size: 24,
+                    ),
+                    onPressed:
+                        onMenuTap ?? () => Scaffold.of(context).openDrawer(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
                 ),
+                const SizedBox(width: 10),
               ],
-            ),
+              Image.asset(
+                AppAssets.logo,
+                height: 38,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Row(
+                  children: const [
+                    Icon(
+                      Icons.location_on,
+                      color: AppColors.buttonBlue,
+                      size: 28,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'AIR TRACK',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
 
           // Right: User Profile & Notification Badge
@@ -60,7 +87,10 @@ class DashboardHeader extends StatelessWidget {
                 onTap: onProfileTap ?? () => Get.to(() => const ProfileView()),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
                   child: Text(
                     userName,
                     style: const TextStyle(
@@ -75,7 +105,9 @@ class DashboardHeader extends StatelessWidget {
 
               // Notification Bell Icon with Badge (Clickable to open NotificationView)
               InkWell(
-                onTap: onNotificationTap ?? () => Get.to(() => const NotificationView()),
+                onTap:
+                    onNotificationTap ??
+                    () => Get.to(() => const NotificationView()),
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
                   padding: const EdgeInsets.all(4.0),
@@ -119,11 +151,7 @@ class DashboardHeader extends StatelessWidget {
                 child: const CircleAvatar(
                   radius: 16,
                   backgroundColor: Color(0xFFE4E7EC),
-                  child: Icon(
-                    Icons.person,
-                    color: Color(0xFF667085),
-                    size: 20,
-                  ),
+                  child: Icon(Icons.person, color: Color(0xFF667085), size: 20),
                 ),
               ),
             ],

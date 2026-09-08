@@ -15,6 +15,12 @@ class _UpdateOdometerDialogState extends State<UpdateOdometerDialog> {
   final TextEditingController odometerController = TextEditingController();
 
   @override
+  void dispose() {
+    odometerController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.white,

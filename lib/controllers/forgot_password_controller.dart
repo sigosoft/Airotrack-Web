@@ -39,16 +39,14 @@ class ForgotPasswordController extends GetxController {
     });
 
     confirmPasswordController.addListener(() {
-      model.update((val) => val?.confirmPassword = confirmPasswordController.text);
+      model.update(
+        (val) => val?.confirmPassword = confirmPasswordController.text,
+      );
     });
   }
 
   @override
   void onClose() {
-    phoneController.dispose();
-    otpController.dispose();
-    newPasswordController.dispose();
-    confirmPasswordController.dispose();
     super.onClose();
   }
 
@@ -70,7 +68,9 @@ class ForgotPasswordController extends GetxController {
 
       Get.to(() => const OtpVerificationView());
     } finally {
-      isLoading.value = false;
+      if (!isClosed) {
+        isLoading.value = false;
+      }
     }
   }
 
@@ -84,7 +84,9 @@ class ForgotPasswordController extends GetxController {
 
       Get.to(() => const CreateNewPasswordView());
     } finally {
-      isLoading.value = false;
+      if (!isClosed) {
+        isLoading.value = false;
+      }
     }
   }
 
@@ -98,8 +100,14 @@ class ForgotPasswordController extends GetxController {
 
       // Return to Login Screen and clear stack
       Get.offAll(() => const LoginView());
-    } finally {
-      isLoading.value = false;
+    } catch (e) {
+      AppToast.show(
+        'Failed to reset password. Please try again.',
+        isError: true,
+      );
+      if (!isClosed) {
+        isLoading.value = false;
+      }
     }
   }
 }

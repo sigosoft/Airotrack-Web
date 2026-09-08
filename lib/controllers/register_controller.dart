@@ -46,10 +46,6 @@ class RegisterController extends GetxController {
 
   @override
   void onClose() {
-    nameController.dispose();
-    phoneController.dispose();
-    passwordController.dispose();
-    confirmPasswordController.dispose();
     super.onClose();
   }
 
@@ -75,8 +71,9 @@ class RegisterController extends GetxController {
       onLoginTap();
     } catch (e) {
       AppToast.show('Unable to create account. Please try again.', isError: true);
-    } finally {
-      isLoading.value = false;
+      if (!isClosed) {
+        isLoading.value = false;
+      }
     }
   }
 

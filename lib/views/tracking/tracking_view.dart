@@ -21,6 +21,29 @@ class TrackingView extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      drawer: isMobile
+          ? Drawer(
+              child: SafeArea(
+                child: Obx(
+                  () => SidebarNavigation(
+                    selectedIndex: dashboardController.selectedMenuIndex.value,
+                    onItemSelected: (index) {
+                      dashboardController.selectMenu(index);
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    onSubItemSelected: (_) {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    width: double.infinity,
+                  ),
+                ),
+              ),
+            )
+          : null,
       body: Column(
         children: [
           // 1. Header Bar

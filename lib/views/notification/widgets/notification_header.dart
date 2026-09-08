@@ -1,50 +1,70 @@
 import 'package:flutter/material.dart';
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
+import '../../../utils/custom_media_query.dart';
 
 class NotificationHeader extends StatelessWidget {
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onFilterTap;
 
-  const NotificationHeader({
-    super.key,
-    this.onSearchChanged,
-    this.onFilterTap,
-  });
+  const NotificationHeader({super.key, this.onSearchChanged, this.onFilterTap});
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = CustomMediaQuery.isMobile(context);
+
     return Container(
       height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left: AIR TRACK Logo
-          Image.asset(
-            AppAssets.logo,
-            height: 38,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => Row(
-              children: const [
-                Icon(Icons.location_on, color: AppColors.buttonBlue, size: 28),
-                SizedBox(width: 6),
-                Text(
-                  'AIR TRACK',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+          // Left: Menu Button (Mobile) + AIR TRACK Logo
+          Row(
+            children: [
+              if (isMobile) ...[
+                Builder(
+                  builder: (context) => IconButton(
+                    icon: const Icon(
+                      Icons.menu_rounded,
+                      color: Color(0xFF344054),
+                      size: 24,
+                    ),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
                 ),
+                const SizedBox(width: 10),
               ],
-            ),
+              Image.asset(
+                AppAssets.logo,
+                height: 38,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Row(
+                  children: const [
+                    Icon(
+                      Icons.location_on,
+                      color: AppColors.buttonBlue,
+                      size: 28,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'AIR TRACK',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
 
           // Middle: Search Vehicles Input Field (Single Pill Container)
@@ -76,7 +96,10 @@ class NotificationHeader extends StatelessWidget {
                 enabledBorder: InputBorder.none,
                 errorBorder: InputBorder.none,
                 disabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 filled: false,
               ),
             ),
@@ -99,7 +122,10 @@ class NotificationHeader extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
+                    border: Border.all(
+                      color: const Color(0xFFD0D5DD),
+                      width: 1,
+                    ),
                   ),
                   child: const Icon(
                     Icons.tune_rounded,

@@ -15,6 +15,12 @@ class _SelectGeofenceDialogState extends State<SelectGeofenceDialog> {
   int selectedIndex = 0;
   final TextEditingController searchController = TextEditingController();
 
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
   final geofences = [
     {
       'title': 'Vennakkad',
