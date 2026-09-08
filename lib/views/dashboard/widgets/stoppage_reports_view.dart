@@ -175,104 +175,119 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
           ),
 
           // 2. Main Content Body (2-Column Cards Grid & Pagination)
+          // 2. Main Content Body (2-Column Cards Grid & Pagination)
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Column(
-                children: [
-                  // 2-Column Cards Grid
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final double maxWidth = constraints.maxWidth;
-                      int crossAxisCount = 2;
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x06000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // 2-Column Cards Grid
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final double maxWidth = constraints.maxWidth;
+                        int crossAxisCount = 2;
 
-                      if (maxWidth < 768) {
-                        crossAxisCount = 1;
-                      }
+                        if (maxWidth < 768) {
+                          crossAxisCount = 1;
+                        }
 
-                      return GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _stoppageReportsList.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 2.8,
-                        ),
-                        itemBuilder: (context, index) {
-                          final item = _stoppageReportsList[index];
-                          return _buildStoppageCard(item);
-                        },
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // Bottom Pagination Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      for (int i = 1; i <= 10; i++) ...[
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _selectedPage = i;
-                            });
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _stoppageReportsList.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            mainAxisExtent: 108,
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = _stoppageReportsList[index];
+                            return _buildStoppageCard(item);
                           },
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: _selectedPage == i
-                                  ? const Color(0xFF00A3E0)
-                                  : Colors.transparent,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              '$i',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.bold,
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Bottom Pagination Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (int i = 1; i <= 10; i++) ...[
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedPage = i;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
                                 color: _selectedPage == i
-                                    ? Colors.white
-                                    : const Color(0xFF344054),
+                                    ? const Color(0xFF00A3E0)
+                                    : Colors.transparent,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '$i',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: _selectedPage == i
+                                      ? Colors.white
+                                      : const Color(0xFF344054),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
+                          const SizedBox(width: 12),
+                        ],
 
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
 
-                      // NEXT Button
-                      InkWell(
-                        onTap: () {
-                          if (_selectedPage < 10) {
-                            setState(() {
-                              _selectedPage++;
-                            });
-                          }
-                        },
-                        child: const Text(
-                          'NEXT',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF00A3E0),
-                            letterSpacing: 0.5,
+                        // NEXT Button
+                        InkWell(
+                          onTap: () {
+                            if (_selectedPage < 10) {
+                              setState(() {
+                                _selectedPage++;
+                              });
+                            }
+                          },
+                          child: const Text(
+                            'NEXT',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF00A3E0),
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -298,7 +313,7 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
