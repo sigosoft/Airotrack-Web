@@ -73,20 +73,13 @@ class _ExpensesViewState extends State<ExpensesView> {
       body: Column(
         children: [
           // 1. Top Header Bar (Search Box + Date Pickers + Add Expense Button)
-          Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
-              ),
-            ),
-            child: Row(
-              children: [
-                // Search Vehicles Search Bar
-                Container(
-                  width: 300,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 768;
+
+              Widget buildSearchBox({double? width}) {
+                return Container(
+                  width: width,
                   height: 38,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
@@ -110,238 +103,311 @@ class _ExpensesViewState extends State<ExpensesView> {
                       ),
                     ],
                   ),
-                ),
+                );
+              }
 
-                const Spacer(),
-
-                // Start Date & End Date Range Pickers
-                Obx(
-                  () => _buildDatePickerBox(controller.reportStartDate.value),
-                ),
-                const SizedBox(width: 12),
-                Obx(() => _buildDatePickerBox(controller.reportEndDate.value)),
-                const SizedBox(width: 16),
-
-                // Add Expense Button
-                InkWell(
-                  onTap: () => _showAddExpenseDialog(context),
-                  child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00A3E0),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Add Expense',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+              Widget buildDateAndAddExpenseGroup() {
+                return FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: isNarrow
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Obx(
+                        () => _buildDatePickerBox(
+                          controller.reportStartDate.value,
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Obx(
+                        () =>
+                            _buildDatePickerBox(controller.reportEndDate.value),
+                      ),
+                      const SizedBox(width: 12),
+                      // Add Expense Button
+                      InkWell(
+                        onTap: () => _showAddExpenseDialog(context),
+                        child: Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A3E0),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Add Expense',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isNarrow ? 16 : 24,
+                  vertical: isNarrow ? 10 : 11,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
                   ),
                 ),
-              ],
-            ),
+                child: isNarrow
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          buildSearchBox(width: double.infinity),
+                          const SizedBox(height: 10),
+                          buildDateAndAddExpenseGroup(),
+                        ],
+                      )
+                    : SizedBox(
+                        height: 38,
+                        child: Row(
+                          children: [
+                            buildSearchBox(width: 300),
+                            const Spacer(),
+                            buildDateAndAddExpenseGroup(),
+                          ],
+                        ),
+                      ),
+              );
+            },
           ),
 
           // 2. Main Table Area
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
-                ),
-                child: Column(
-                  children: [
-                    // Table Header
-                    Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        border: Border(
-                          bottom:
-                              BorderSide(color: Color(0xFFEAECF0), width: 1),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final double tableWidth = constraints.maxWidth < 750
+                      ? 750
+                      : constraints.maxWidth;
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: tableWidth,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFFEAECF0),
+                            width: 1,
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        children: const [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              'Vehicle',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Table Header
+                            Container(
+                              height: 48,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
                               ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              'Date & Time',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Text(
-                              'Type',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Center(
-                              child: Text(
-                                'Quantity',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: Color(0xFFEAECF0),
+                                    width: 1,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Center(
-                              child: Text(
-                                'Amount',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
-                                ),
+                              child: Row(
+                                children: const [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      'Vehicle',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      'Date & Time',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Text(
+                                      'Type',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Center(
+                                      child: Text(
+                                        'Quantity',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Center(
+                                      child: Text(
+                                        'Amount',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Center(
+                                      child: Text(
+                                        'Payment Type',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        'Image',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Center(
-                              child: Text(
-                                'Payment Type',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
+
+                            // Table Rows
+                            for (int i = 0; i < _expensesList.length; i++) ...[
+                              _buildTableRow(_expensesList[i]),
+                              if (i < _expensesList.length - 1)
+                                const Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: Color(0xFFEAECF0),
                                 ),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                'Image',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                            ],
+                          ],
+                        ),
                       ),
                     ),
-
-                    // Table Rows
-                    for (int i = 0; i < _expensesList.length; i++) ...[
-                      _buildTableRow(_expensesList[i]),
-                      if (i < _expensesList.length - 1)
-                        const Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: Color(0xFFEAECF0),
-                        ),
-                    ],
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),
 
           // 3. Bottom Pagination Footer
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (int i = 1; i <= 10; i++) ...[
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedPage = i;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _selectedPage == i
-                            ? const Color(0xFF00A3E0)
-                            : Colors.transparent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$i',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.bold,
-                          color: _selectedPage == i
-                              ? Colors.white
-                              : const Color(0xFF344054),
+          if ((_expensesList.length / 10).ceil() > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (int i = 1; i <= (_expensesList.length / 10).ceil(); i++) ...[
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedPage = i;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _selectedPage == i
+                                ? const Color(0xFF00A3E0)
+                                : Colors.transparent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '$i',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedPage == i
+                                  ? Colors.white
+                                  : const Color(0xFF344054),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
+                      const SizedBox(width: 12),
+                    ],
 
-                const SizedBox(width: 8),
+                    const SizedBox(width: 8),
 
-                // NEXT Button
-                InkWell(
-                  onTap: () {
-                    if (_selectedPage < 10) {
-                      setState(() {
-                        _selectedPage++;
-                      });
-                    }
-                  },
-                  child: const Text(
-                    'NEXT',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF00A3E0),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
+                    // NEXT Button
+                    if (_selectedPage < (_expensesList.length / 10).ceil())
+                      InkWell(
+                        onTap: () {
+                          if (_selectedPage < (_expensesList.length / 10).ceil()) {
+                            setState(() {
+                              _selectedPage++;
+                            });
+                          }
+                        },
+                        child: const Text(
+                          'NEXT',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00A3E0),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -506,8 +572,10 @@ class _ExpensesViewState extends State<ExpensesView> {
       builder: (BuildContext context) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -526,204 +594,214 @@ class _ExpensesViewState extends State<ExpensesView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title
-                    const Text(
-                      'Add Expense',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1D2939),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Row 1: Vehicle (Left) & Date (Right)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Vehicle',
-                            child: _buildDropdownField('Select Vehicle'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Date',
-                            child:
-                                _buildDatePickerInput('13 Oct 2025 10:40 Am'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Row 2: Expense Type (Left) & Quantity (Right)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Expense Type',
-                            child: _buildDropdownField('Select Expense Type'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Quantity',
-                            child: _buildTextInputField('Enter Quantity'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Row 3: Amount (Left) & Payment Method (Right)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Amount',
-                            child: _buildTextInputField('Enter Amount'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Payment Method',
-                            child:
-                                _buildDropdownField('Select Payment Method'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Row 4: Description (Full Width Multiline)
-                    _buildFormField(
-                      label: 'Description',
-                      child: Container(
-                        height: 80,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAFAFA),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: const Color(0xFFEAECF0), width: 1),
-                        ),
-                        child: const Align(
-                          alignment: Alignment.topLeft,
-                          child: Text(
-                            'Enter Description',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: Color(0xFFB0B7C3),
-                            ),
-                          ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Title
+                      const Text(
+                        'Add Expense',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1D2939),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
+                      const SizedBox(height: 18),
 
-                    // Row 5: Upload Image Box
-                    _buildFormField(
-                      label: 'Upload Image',
-                      child: Container(
-                        width: 90,
-                        height: 90,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAFAFA),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: const Color(0xFFEAECF0), width: 1),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(
-                              Icons.image_outlined,
-                              size: 28,
-                              color: Color(0xFF00A3E0),
+                      // Row 1: Vehicle (Left) & Date (Right)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Vehicle',
+                              child: _buildDropdownField('Select Vehicle'),
                             ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Upload Image',
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Date',
+                              child: _buildDatePickerInput(
+                                '13 Oct 2025 10:40 Am',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Row 2: Expense Type (Left) & Quantity (Right)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Expense Type',
+                              child: _buildDropdownField('Select Expense Type'),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Quantity',
+                              child: _buildTextInputField('Enter Quantity'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Row 3: Amount (Left) & Payment Method (Right)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Amount',
+                              child: _buildTextInputField('Enter Amount'),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Payment Method',
+                              child: _buildDropdownField(
+                                'Select Payment Method',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Row 4: Description (Full Width Multiline)
+                      _buildFormField(
+                        label: 'Description',
+                        child: Container(
+                          height: 80,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFAFAFA),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFFEAECF0),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Align(
+                            alignment: Alignment.topLeft,
+                            child: Text(
+                              'Enter Description',
                               style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF98A2B3),
+                                fontSize: 12.5,
+                                color: Color(0xFFB0B7C3),
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 14),
 
-                    // Row 6: Action Buttons (Cancel & Submit)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                            },
-                            child: Container(
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFAFAFA),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: const Color(0xFFEAECF0),
-                                  width: 1,
+                      // Row 5: Upload Image Box
+                      _buildFormField(
+                        label: 'Upload Image',
+                        child: Container(
+                          width: 90,
+                          height: 90,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFAFAFA),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFFEAECF0),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.image_outlined,
+                                size: 28,
+                                color: Color(0xFF00A3E0),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Upload Image',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF98A2B3),
                                 ),
                               ),
-                              child: const Center(
-                                child: Text(
-                                  'Cancel',
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1D2939),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Row 6: Action Buttons (Cancel & Submit)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.of(context).pop();
+                              },
+                              child: Container(
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFAFAFA),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFEAECF0),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1D2939),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                            },
-                            child: Container(
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00A3E0),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Submit',
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.of(context).pop();
+                              },
+                              child: Container(
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00A3E0),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'Submit',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -741,7 +819,9 @@ class _ExpensesViewState extends State<ExpensesView> {
                       color: Colors.white,
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: const Color(0xFFD0D5DD), width: 1.5),
+                        color: const Color(0xFFD0D5DD),
+                        width: 1.5,
+                      ),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x1F000000),
@@ -796,10 +876,7 @@ class _ExpensesViewState extends State<ExpensesView> {
         children: [
           Text(
             placeholder,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFFB0B7C3),
-            ),
+            style: const TextStyle(fontSize: 12, color: Color(0xFFB0B7C3)),
           ),
           const Spacer(),
           const Icon(
@@ -825,10 +902,7 @@ class _ExpensesViewState extends State<ExpensesView> {
         alignment: Alignment.centerLeft,
         child: Text(
           placeholder,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0xFFB0B7C3),
-          ),
+          style: const TextStyle(fontSize: 12, color: Color(0xFFB0B7C3)),
         ),
       ),
     );
@@ -847,10 +921,7 @@ class _ExpensesViewState extends State<ExpensesView> {
         children: [
           Text(
             placeholder,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF98A2B3),
-            ),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF98A2B3)),
           ),
           const Spacer(),
           const Icon(

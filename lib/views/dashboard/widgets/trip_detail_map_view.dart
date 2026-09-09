@@ -4,14 +4,12 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../controllers/vehicle_detail_controller.dart';
+import '../../../utils/custom_media_query.dart';
 
 class TripDetailMapView extends StatefulWidget {
   final Map<String, dynamic>? reportData;
 
-  const TripDetailMapView({
-    super.key,
-    this.reportData,
-  });
+  const TripDetailMapView({super.key, this.reportData});
 
   @override
   State<TripDetailMapView> createState() => _TripDetailMapViewState();
@@ -28,7 +26,253 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
   @override
   Widget build(BuildContext context) {
     final vehicleNumber = widget.reportData?['vehicle'] ?? 'KL 07 D 0518';
-    final VehicleDetailController controller = Get.put(VehicleDetailController());
+    final VehicleDetailController controller = Get.put(
+      VehicleDetailController(),
+    );
+    final isMobile = CustomMediaQuery.isMobile(context);
+
+    Widget buildMapStack() {
+      return Stack(
+        children: [
+          // OpenStreetMap Canvas
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: const LatLng(10.038, 76.325),
+              initialZoom: 13.5,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.airotrack.app',
+              ),
+              // Route Black Polyline
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: routePoints,
+                    color: Colors.black,
+                    strokeWidth: 3.5,
+                  ),
+                ],
+              ),
+              // Red Flag (Start) & Green Flag (End) Markers
+              MarkerLayer(
+                markers: [
+                  // Start Red Flag Marker
+                  Marker(
+                    point: routePoints.first,
+                    width: 32,
+                    height: 32,
+                    child: const Icon(
+                      Icons.flag_rounded,
+                      color: Color(0xFFE53935),
+                      size: 32,
+                    ),
+                  ),
+                  // End Green Flag Marker
+                  Marker(
+                    point: routePoints.last,
+                    width: 32,
+                    height: 32,
+                    child: const Icon(
+                      Icons.flag_rounded,
+                      color: Color(0xFF00A859),
+                      size: 32,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Right Floating Action Map Toolbar
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Column(
+              children: const [
+                _MapIconButton(icon: Icons.map_outlined),
+                _MapIconButton(icon: Icons.location_on_outlined),
+                _MapIconButton(text: 'P', color: Color(0xFF00A859)),
+                _MapIconButton(icon: Icons.my_location_rounded),
+              ],
+            ),
+          ),
+
+          // Zoom Buttons
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: Column(
+              children: const [
+                _MapIconButton(icon: Icons.add_rounded),
+                _MapIconButton(icon: Icons.remove_rounded),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildTripSidebar() {
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Top 3 Metric Cards Row (0 Kmph, 00:00:00, 12.5 Km)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    icon: Icons.dashboard_outlined,
+                    value: '0',
+                    unit: 'Kmph',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildMetricCard(
+                    icon: Icons.access_time_rounded,
+                    value: '00:00:00',
+                    unit: '',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildMetricCard(
+                    icon: Icons.speed_rounded,
+                    value: '12.5',
+                    unit: 'Km',
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // 2. Playback Bar Card (Play, Slider, 1x, Replay, Tune)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+              ),
+              child: Obx(
+                () => Row(
+                  children: [
+                    // Play / Pause circular button
+                    InkWell(
+                      onTap: controller.togglePlay,
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF0288D1),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          controller.isPlaying.value
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 16,
+                          color: const Color(0xFF0288D1),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Progress Slider
+                    Expanded(
+                      child: SliderTheme(
+                        data: SliderThemeData(
+                          trackHeight: 3,
+                          activeTrackColor: const Color(0xFF0288D1),
+                          inactiveTrackColor: const Color(0xFFE4E7EC),
+                          thumbColor: const Color(0xFF0288D1),
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 5,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 10,
+                          ),
+                        ),
+                        child: Slider(
+                          value: controller.playbackProgress.value,
+                          onChanged: (val) {
+                            controller.playbackProgress.value = val;
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // 1x Speed Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0288D1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        '1x',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Replay Icon
+                    const Icon(
+                      Icons.replay_rounded,
+                      size: 16,
+                      color: Color(0xFF0288D1),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Settings / Tune Icon
+                    const Icon(
+                      Icons.tune_rounded,
+                      size: 16,
+                      color: Color(0xFF0288D1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // 3. History Trip / Stop Item Card 1 (Red Stop Badge)
+            _buildTripDetailCard(
+              badgeLabel: 'Stop',
+              badgeBgColor: const Color(0xFFFEE4E2),
+              badgeTextColor: const Color(0xFFF04438),
+            ),
+
+            const SizedBox(height: 12),
+
+            // 4. History Trip / Stop Item Card 2 (Green Stop Badge)
+            _buildTripDetailCard(
+              badgeLabel: 'Stop',
+              badgeBgColor: const Color(0xFFD1FADF),
+              badgeTextColor: const Color(0xFF12B76A),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -36,306 +280,145 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
         children: [
           // 1. Top Navigation Header Bar
           Container(
-            height: 52,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(
                 bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
               ),
             ),
-            child: Row(
-              children: [
-                // Back Arrow Button
-                InkWell(
-                  onTap: () {
-                    Get.back();
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.arrow_back_rounded,
-                      size: 20,
-                      color: Color(0xFF1D2939),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-
-                // Vehicle Registration Title
-                Text(
-                  vehicleNumber,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1D2939),
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Date Range Pickers (Start Date & End Date)
-                Obx(() => _buildDatePickerBox(controller.startDateStr.value)),
-                const SizedBox(width: 12),
-                Obx(() => _buildDatePickerBox(controller.endDateStr.value)),
-              ],
-            ),
-          ),
-
-          // 2. Main Area (Left Map + Right Trip Details Sidebar)
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Left Map Area
-                Expanded(
-                  child: Stack(
+            child: isMobile
+                ? Column(
                     children: [
-                      // OpenStreetMap Canvas
-                      FlutterMap(
-                        options: MapOptions(
-                          initialCenter: const LatLng(10.038, 76.325),
-                          initialZoom: 13.5,
-                        ),
+                      Row(
                         children: [
-                          TileLayer(
-                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.airotrack.app',
+                          InkWell(
+                            onTap: () {
+                              Get.back();
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.arrow_back_rounded,
+                                size: 20,
+                                color: Color(0xFF1D2939),
+                              ),
+                            ),
                           ),
-                          // Route Black Polyline
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: routePoints,
-                                color: Colors.black,
-                                strokeWidth: 3.5,
-                              ),
-                            ],
-                          ),
-                          // Red Flag (Start) & Green Flag (End) Markers
-                          MarkerLayer(
-                            markers: [
-                              // Start Red Flag Marker
-                              Marker(
-                                point: routePoints.first,
-                                width: 32,
-                                height: 32,
-                                child: const Icon(
-                                  Icons.flag_rounded,
-                                  color: Color(0xFFE53935),
-                                  size: 32,
-                                ),
-                              ),
-                              // End Green Flag Marker
-                              Marker(
-                                point: routePoints.last,
-                                width: 32,
-                                height: 32,
-                                child: const Icon(
-                                  Icons.flag_rounded,
-                                  color: Color(0xFF00A859),
-                                  size: 32,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(width: 8),
+                          Text(
+                            vehicleNumber,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1D2939),
+                            ),
                           ),
                         ],
                       ),
-
-                      // Right Floating Action Map Toolbar
-                      Positioned(
-                        top: 16,
-                        right: 16,
-                        child: Column(
-                          children: const [
-                            _MapIconButton(icon: Icons.map_outlined),
-                            _MapIconButton(icon: Icons.location_on_outlined),
-                            _MapIconButton(text: 'P', color: Color(0xFF00A859)),
-                            _MapIconButton(icon: Icons.my_location_rounded),
-                          ],
-                        ),
-                      ),
-
-                      // Zoom Buttons
-                      Positioned(
-                        bottom: 16,
-                        right: 16,
-                        child: Column(
-                          children: const [
-                            _MapIconButton(icon: Icons.add_rounded),
-                            _MapIconButton(icon: Icons.remove_rounded),
-                          ],
-                        ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Obx(
+                              () => _buildDatePickerBox(
+                                controller.startDateStr.value,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Obx(
+                              () => _buildDatePickerBox(
+                                controller.endDateStr.value,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ),
-
-                // Right Trip Details Sidebar
-                Container(
-                  width: 340,
-                  color: const Color(0xFFF4F6F9),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  )
+                : SizedBox(
+                    height: 36,
+                    child: Row(
                       children: [
-                        // 1. Top 3 Metric Cards Row (0 Kmph, 00:00:00, 12.5 Km)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildMetricCard(
-                                icon: Icons.dashboard_outlined,
-                                value: '0',
-                                unit: 'Kmph',
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildMetricCard(
-                                icon: Icons.access_time_rounded,
-                                value: '00:00:00',
-                                unit: '',
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildMetricCard(
-                                icon: Icons.speed_rounded,
-                                value: '12.5',
-                                unit: 'Km',
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // 2. Playback Bar Card (Play, Slider, 1x, Replay, Tune)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFEAECF0),
-                              width: 1,
-                            ),
-                          ),
-                          child: Obx(
-                            () => Row(
-                              children: [
-                                // Play / Pause circular button
-                                InkWell(
-                                  onTap: controller.togglePlay,
-                                  child: Container(
-                                    width: 26,
-                                    height: 26,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: const Color(0xFF0288D1),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      controller.isPlaying.value
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                      size: 16,
-                                      color: const Color(0xFF0288D1),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // Progress Slider
-                                Expanded(
-                                  child: SliderTheme(
-                                    data: SliderThemeData(
-                                      trackHeight: 3,
-                                      activeTrackColor: const Color(0xFF0288D1),
-                                      inactiveTrackColor: const Color(
-                                        0xFFE4E7EC,
-                                      ),
-                                      thumbColor: const Color(0xFF0288D1),
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 5,
-                                      ),
-                                      overlayShape:
-                                          const RoundSliderOverlayShape(
-                                            overlayRadius: 10,
-                                          ),
-                                    ),
-                                    child: Slider(
-                                      value: controller.playbackProgress.value,
-                                      onChanged: (val) {
-                                        controller.playbackProgress.value = val;
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // 1x Speed Badge
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0288D1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    '1x',
-                                    style: TextStyle(
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // Replay Icon
-                                const Icon(
-                                  Icons.replay_rounded,
-                                  size: 16,
-                                  color: Color(0xFF0288D1),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // Settings / Tune Icon
-                                const Icon(
-                                  Icons.tune_rounded,
-                                  size: 16,
-                                  color: Color(0xFF0288D1),
-                                ),
-                              ],
+                        // Back Arrow Button
+                        InkWell(
+                          onTap: () {
+                            Get.back();
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: const Padding(
+                            padding: EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.arrow_back_rounded,
+                              size: 20,
+                              color: Color(0xFF1D2939),
                             ),
                           ),
                         ),
+                        const SizedBox(width: 16),
 
-                        const SizedBox(height: 12),
+                        // Vehicle Registration Title
+                        Text(
+                          vehicleNumber,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D2939),
+                          ),
+                        ),
 
-                        // 3. Trip / Stop Item Card (Red Stop Badge)
-                        _buildTripDetailCard(
-                          badgeLabel: 'Stop',
-                          badgeBgColor: const Color(0xFFFEE4E2),
-                          badgeTextColor: const Color(0xFFF04438),
+                        const Spacer(),
+
+                        // Date Range Pickers (Start Date & End Date)
+                        Obx(
+                          () => _buildDatePickerBox(
+                            controller.startDateStr.value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Obx(
+                          () =>
+                              _buildDatePickerBox(controller.endDateStr.value),
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
+          ),
+
+          // 2. Main Area (Left Map + Right Trip Details Sidebar)
+          Expanded(
+            child: isMobile
+                ? Column(
+                    children: [
+                      // Top Map View
+                      SizedBox(height: 360, child: buildMapStack()),
+                      // Bottom Trip Details Sidebar
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          color: const Color(0xFFF4F6F9),
+                          child: buildTripSidebar(),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Left Map Area
+                      Expanded(child: buildMapStack()),
+
+                      // Right Trip Details Sidebar
+                      Container(
+                        width: 340,
+                        color: const Color(0xFFF4F6F9),
+                        child: buildTripSidebar(),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),

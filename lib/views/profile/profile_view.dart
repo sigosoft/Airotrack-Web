@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/profile_controller.dart';
+import '../../utils/custom_media_query.dart';
 import 'widgets/account_settings_content.dart';
 import 'widgets/coming_soon_content.dart';
 import 'widgets/general_settings_content.dart';
@@ -14,6 +15,41 @@ class ProfileView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ProfileController controller = Get.put(ProfileController());
+    final isMobile = CustomMediaQuery.isMobile(context);
+
+    final detailsContent = Obx(() {
+      final selectedIndex = controller.selectedMenuIndex.value;
+
+      switch (selectedIndex) {
+        case 1:
+          return const AccountSettingsContent();
+        case 2:
+          return const RaiseTicketContent();
+        case 3:
+          return const ComingSoonContent(title: 'Change Password');
+        case 4:
+          return const ComingSoonContent(title: 'Configure Alerts');
+        case 0:
+        default:
+          return const GeneralSettingsContent();
+      }
+    });
+
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: SafeArea(
+          child: Column(
+            children: [
+              const ProfileSidebarMenu(),
+              Expanded(
+                child: detailsContent,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -25,23 +61,7 @@ class ProfileView extends StatelessWidget {
 
           // Right Details Panel
           Expanded(
-            child: Obx(() {
-              final selectedIndex = controller.selectedMenuIndex.value;
-
-              switch (selectedIndex) {
-                case 1:
-                  return const AccountSettingsContent();
-                case 2:
-                  return const RaiseTicketContent();
-                case 3:
-                  return const ComingSoonContent(title: 'Change Password');
-                case 4:
-                  return const ComingSoonContent(title: 'Configure Alerts');
-                case 0:
-                default:
-                  return const GeneralSettingsContent();
-              }
-            }),
+            child: detailsContent,
           ),
         ],
       ),

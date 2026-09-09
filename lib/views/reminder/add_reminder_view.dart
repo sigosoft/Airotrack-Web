@@ -107,17 +107,23 @@ class AddReminderView extends StatelessWidget {
           ),
 
           // 3. Bottom 1-10 Pagination Bar
-          Container(
-            height: 60,
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Obx(() {
-              final activePage = controller.currentPage.value;
+          Obx(() {
+            final activePage = controller.currentPage.value;
+            final reminders = controller.reminders;
+            final totalPages = (reminders.length / 10).ceil();
 
-              return Row(
+            if (totalPages <= 1) {
+              return const SizedBox.shrink();
+            }
+
+            return Container(
+              height: 60,
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ...List.generate(10, (pageIndex) {
+                  ...List.generate(totalPages, (pageIndex) {
                     final pageNum = pageIndex + 1;
                     final isSelected = activePage == pageNum;
 
@@ -145,21 +151,22 @@ class AddReminderView extends StatelessWidget {
                     );
                   }),
                   const SizedBox(width: 12),
-                  InkWell(
-                    onTap: controller.nextPage,
-                    child: const Text(
-                      'NEXT',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF00A3E0),
+                  if (activePage < totalPages)
+                    InkWell(
+                      onTap: controller.nextPage,
+                      child: const Text(
+                        'NEXT',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF00A3E0),
+                        ),
                       ),
                     ),
-                  ),
                 ],
-              );
-            }),
-          ),
+              ),
+            );
+          }),
         ],
       ),
     );

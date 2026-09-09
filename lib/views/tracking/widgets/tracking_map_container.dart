@@ -39,18 +39,63 @@ class TrackingMapContainer extends StatelessWidget {
     return Column(
       children: [
         // 1. Top Header Bar (History, Alerts, Statistics)
-        Container(
-          height: 48,
-          color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildTopTabItem('History', Icons.access_time_rounded, 0),
-              _buildTopTabItem('Alerts', Icons.notifications_none_rounded, 1),
-              _buildTopTabItem('Statistics', Icons.analytics_outlined, 2),
-            ],
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 450;
+
+            return Container(
+              height: 48,
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: isNarrow
+                  ? FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildTopTabItem(
+                            'History',
+                            Icons.access_time_rounded,
+                            0,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildTopTabItem(
+                            'Alerts',
+                            Icons.notifications_none_rounded,
+                            1,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildTopTabItem(
+                            'Statistics',
+                            Icons.analytics_outlined,
+                            2,
+                          ),
+                        ],
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildTopTabItem(
+                          'History',
+                          Icons.access_time_rounded,
+                          0,
+                        ),
+                        _buildTopTabItem(
+                          'Alerts',
+                          Icons.notifications_none_rounded,
+                          1,
+                        ),
+                        _buildTopTabItem(
+                          'Statistics',
+                          Icons.analytics_outlined,
+                          2,
+                        ),
+                      ],
+                    ),
+            );
+          },
         ),
 
         // 2. Interactive Map Container Area
@@ -199,29 +244,32 @@ class TrackingMapContainer extends StatelessWidget {
               Positioned(
                 top: 16,
                 right: 16,
-                child: Column(
-                  children: const [
-                    _SeperateMapIconButton(icon: Icons.map_outlined),
-                    _SeperateMapIconButton(
-                      icon: Icons.lock_open_rounded,
-                      color: Color(0xFF00A859),
-                    ),
-                    _SeperateMapIconButton(text: 'P', color: Color(0xFFE53935)),
-                    _SeperateMapIconButton(icon: Icons.videocam_outlined),
-                    _SeperateMapIconButton(
-                      icon: Icons.alt_route_rounded,
-                      color: Color(0xFF00A859),
-                    ),
-                    _SeperateMapIconButton(icon: Icons.my_location_rounded),
-                    _SeperateMapIconButton(icon: Icons.person_outline_rounded),
-                    _SeperateMapIconButton(
-                      icon: Icons.person_pin_circle_outlined,
-                    ),
-                    _SeperateMapIconButton(icon: Icons.explore_outlined),
-                    SizedBox(height: 4),
-                    _SeperateMapIconButton(icon: Icons.add_rounded),
-                    _SeperateMapIconButton(icon: Icons.remove_rounded),
-                  ],
+                bottom: 130,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: const [
+                      _SeperateMapIconButton(icon: Icons.map_outlined),
+                      _SeperateMapIconButton(
+                        icon: Icons.lock_open_rounded,
+                        color: Color(0xFF00A859),
+                      ),
+                      _SeperateMapIconButton(text: 'P', color: Color(0xFFE53935)),
+                      _SeperateMapIconButton(icon: Icons.videocam_outlined),
+                      _SeperateMapIconButton(
+                        icon: Icons.alt_route_rounded,
+                        color: Color(0xFF00A859),
+                      ),
+                      _SeperateMapIconButton(icon: Icons.my_location_rounded),
+                      _SeperateMapIconButton(icon: Icons.person_outline_rounded),
+                      _SeperateMapIconButton(
+                        icon: Icons.person_pin_circle_outlined,
+                      ),
+                      _SeperateMapIconButton(icon: Icons.explore_outlined),
+                      SizedBox(height: 4),
+                      _SeperateMapIconButton(icon: Icons.add_rounded),
+                      _SeperateMapIconButton(icon: Icons.remove_rounded),
+                    ],
+                  ),
                 ),
               ),
 

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../constants/app_assets.dart';
 import '../../../models/vehicle_detail_model.dart';
+import '../../../utils/custom_media_query.dart';
 import 'send_command_dialog.dart';
 
 class VehicleInfoSidebar extends StatelessWidget {
@@ -13,9 +14,10 @@ class VehicleInfoSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final odometerDigitsList = data.odometerDigits.split('');
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     return Container(
-      width: 380,
+      width: isMobile ? double.infinity : 380,
       color: const Color(0xFFF4F6F9),
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
@@ -222,9 +224,8 @@ class VehicleInfoSidebar extends StatelessWidget {
                   onTap: () {
                     showDialog(
                       context: context,
-                      builder: (context) => SendCommandDialog(
-                        vehicleNumber: data.vehicleNumber,
-                      ),
+                      builder: (context) =>
+                          SendCommandDialog(vehicleNumber: data.vehicleNumber),
                     );
                   },
                 ),

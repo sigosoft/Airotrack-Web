@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
 import '../../../controllers/profile_controller.dart';
+import '../../../utils/custom_media_query.dart';
 
 class ProfileSidebarMenu extends StatelessWidget {
   const ProfileSidebarMenu({super.key});
@@ -12,6 +13,7 @@ class ProfileSidebarMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ProfileController controller = Get.find<ProfileController>();
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     final menuItems = [
       {'title': 'General Settings', 'asset': AppAssets.generalSettings},
@@ -21,6 +23,210 @@ class ProfileSidebarMenu extends StatelessWidget {
       {'title': 'Configure Alerts', 'asset': AppAssets.configureAlerts},
       {'title': 'Notification', 'asset': AppAssets.notificationss, 'hasSwitch': true},
     ];
+
+    if (isMobile) {
+      return Container(
+        color: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Mobile Top Bar (Back Arrow + Profile Title + Sign Out)
+            Row(
+              children: [
+                InkWell(
+                  onTap: () => Get.back(),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    size: 22,
+                    color: Color(0xFF1D2939),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Profile',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1D2939),
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  onTap: controller.signOut,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      children: [
+                        Image.asset(
+                          AppAssets.logout,
+                          width: 18,
+                          height: 18,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Sign Out',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.buttonBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // 2. User Info Card (Compact Mobile View)
+            Obx(() {
+              final user = controller.profileData.value.user;
+
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x06000000),
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Color(0xFFE4E7EC),
+                      child: Icon(
+                        Icons.person,
+                        color: Color(0xFF667085),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.name,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1D2939),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.phone_outlined,
+                                size: 12,
+                                color: Color(0xFF667085),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                user.phoneNumber,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFF667085),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+
+            // 3. Horizontal Scrollable Menu Item Tabs
+            Obx(() {
+              final selectedIndex = controller.selectedMenuIndex.value;
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: List.generate(menuItems.length, (index) {
+                    final isSelected = selectedIndex == index;
+                    final item = menuItems[index];
+                    final hasSwitch = item['hasSwitch'] == true;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: () {
+                          if (hasSwitch) {
+                            controller.toggleNotification(!controller.isNotificationEnabled.value);
+                          } else {
+                            controller.selectMenu(index);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFE0F2FE) : Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFFBEE3F8) : const Color(0xFFEAECF0),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.asset(
+                                item['asset'] as String,
+                                width: 18,
+                                height: 18,
+                                fit: BoxFit.contain,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                item['title'] as String,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected ? const Color(0xFF1D2939) : const Color(0xFF344054),
+                                ),
+                              ),
+                              if (hasSwitch) ...[
+                                const SizedBox(width: 6),
+                                Transform.scale(
+                                  scale: 0.65,
+                                  child: CupertinoSwitch(
+                                    value: controller.isNotificationEnabled.value,
+                                    activeColor: const Color(0xFF00A3E0),
+                                    onChanged: controller.toggleNotification,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              );
+            }),
+          ],
+        ),
+      );
+    }
 
     return Container(
       width: 350,

@@ -74,20 +74,13 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
       body: Column(
         children: [
           // 1. Top Header Bar (Search Box + Date Pickers + Export Icon)
-          Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
-              ),
-            ),
-            child: Row(
-              children: [
-                // Search Vehicles Search Bar
-                Container(
-                  width: 300,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 768;
+
+              Widget buildSearchBox({double? width}) {
+                return Container(
+                  width: width,
                   height: 38,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
@@ -111,59 +104,105 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                       ),
                     ],
                   ),
-                ),
+                );
+              }
 
-                const Spacer(),
-
-                // Start Date & End Date Range Pickers
-                Obx(
-                  () => _buildDatePickerBox(controller.reportStartDate.value),
-                ),
-                const SizedBox(width: 12),
-                Obx(() => _buildDatePickerBox(controller.reportEndDate.value)),
-                const SizedBox(width: 12),
-
-                // Yellow Document Export Button with Blue Download Badge
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFFD0D5DD),
-                      width: 1,
-                    ),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
+              Widget buildDateAndExportGroup() {
+                return FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: isNarrow
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.description_outlined,
-                        size: 20,
-                        color: Color(0xFFF59E0B),
+                      Obx(
+                        () => _buildDatePickerBox(
+                          controller.reportStartDate.value,
+                        ),
                       ),
-                      Positioned(
-                        right: 2,
-                        bottom: 2,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF00A3E0),
-                            shape: BoxShape.circle,
+                      const SizedBox(width: 8),
+                      Obx(
+                        () =>
+                            _buildDatePickerBox(controller.reportEndDate.value),
+                      ),
+                      const SizedBox(width: 8),
+                      // Yellow Document Export Button with Blue Download Badge
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFD0D5DD),
+                            width: 1,
                           ),
-                          child: const Icon(
-                            Icons.arrow_downward_rounded,
-                            size: 8,
-                            color: Colors.white,
-                          ),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            const Icon(
+                              Icons.description_outlined,
+                              size: 20,
+                              color: Color(0xFFF59E0B),
+                            ),
+                            Positioned(
+                              right: 2,
+                              bottom: 2,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF00A3E0),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.arrow_downward_rounded,
+                                  size: 8,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
+                );
+              }
+
+              return Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isNarrow ? 16 : 24,
+                  vertical: isNarrow ? 10 : 11,
                 ),
-              ],
-            ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
+                  ),
+                ),
+                child: isNarrow
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          buildSearchBox(width: double.infinity),
+                          const SizedBox(height: 10),
+                          buildDateAndExportGroup(),
+                        ],
+                      )
+                    : SizedBox(
+                        height: 38,
+                        child: Row(
+                          children: [
+                            buildSearchBox(width: 300),
+                            const Spacer(),
+                            buildDateAndExportGroup(),
+                          ],
+                        ),
+                      ),
+              );
+            },
           ),
 
           // 2. Main Content Body (2-Column Cards Grid & Pagination)
@@ -203,11 +242,11 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                           itemCount: _overSpeedReportsList.length,
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            mainAxisExtent: 108,
-                          ),
+                                crossAxisCount: crossAxisCount,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                mainAxisExtent: maxWidth < 768 ? 120 : 108,
+                              ),
                           itemBuilder: (context, index) {
                             final item = _overSpeedReportsList[index];
                             return _buildOverSpeedCard(item);
@@ -219,65 +258,70 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                     const SizedBox(height: 24),
 
                     // Bottom Pagination Row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        for (int i = 1; i <= 10; i++) ...[
-                          InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedPage = i;
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(14),
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: _selectedPage == i
-                                    ? const Color(0xFF00A3E0)
-                                    : Colors.transparent,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text(
-                                '$i',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: _selectedPage == i
-                                      ? Colors.white
-                                      : const Color(0xFF344054),
+                    if ((_overSpeedReportsList.length / 10).ceil() > 1)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            for (int i = 1; i <= (_overSpeedReportsList.length / 10).ceil(); i++) ...[
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedPage = i;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _selectedPage == i
+                                        ? const Color(0xFF00A3E0)
+                                        : Colors.transparent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    '$i',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedPage == i
+                                          ? Colors.white
+                                          : const Color(0xFF344054),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
+                              const SizedBox(width: 12),
+                            ],
 
-                        const SizedBox(width: 8),
+                            const SizedBox(width: 8),
 
-                        // NEXT Button
-                        InkWell(
-                          onTap: () {
-                            if (_selectedPage < 10) {
-                              setState(() {
-                                _selectedPage++;
-                              });
-                            }
-                          },
-                          child: const Text(
-                            'NEXT',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF00A3E0),
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                            // NEXT Button
+                            if (_selectedPage < (_overSpeedReportsList.length / 10).ceil())
+                              InkWell(
+                                onTap: () {
+                                  if (_selectedPage < (_overSpeedReportsList.length / 10).ceil()) {
+                                    setState(() {
+                                      _selectedPage++;
+                                    });
+                                  }
+                                },
+                                child: const Text(
+                                  'NEXT',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF00A3E0),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
               ),
@@ -353,23 +397,28 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                 ),
 
                 // Row 2: Red Clock Icon + Timestamp
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.access_time_rounded,
-                      size: 14,
-                      color: Color(0xFFF04438),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      item['time'],
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF667085),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 14,
+                        color: Color(0xFFF04438),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        item['time'],
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF667085),
+                        ),
+                      ),
+                      const SizedBox(width: 32),
+                    ],
+                  ),
                 ),
 
                 // Row 3: Red Location Pin + Location Address

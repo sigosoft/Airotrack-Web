@@ -8,11 +8,7 @@ class TrackingCard extends StatelessWidget {
   final TrackingCardData data;
   final VoidCallback? onArrowTap;
 
-  const TrackingCard({
-    super.key,
-    required this.data,
-    this.onArrowTap,
-  });
+  const TrackingCard({super.key, required this.data, this.onArrowTap});
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +65,9 @@ class TrackingCard extends StatelessWidget {
                         children: [
                           const SizedBox(height: 6),
                           Image.asset(
-                            data.isGreenVehicle ? AppAssets.greenCar : AppAssets.redCar,
+                            data.isGreenVehicle
+                                ? AppAssets.greenCar
+                                : AppAssets.redCar,
                             width: 125,
                             height: 68,
                             fit: BoxFit.contain,
@@ -138,7 +136,10 @@ class TrackingCard extends StatelessWidget {
                           // Dotted Connector 1
                           Padding(
                             padding: const EdgeInsets.only(left: 0),
-                            child: _VerticalDottedLine(height: 10, color: const Color(0xFF98A2B3)),
+                            child: _VerticalDottedLine(
+                              height: 10,
+                              color: const Color(0xFF98A2B3),
+                            ),
                           ),
 
                           // 2. Status Row
@@ -180,7 +181,10 @@ class TrackingCard extends StatelessWidget {
                           // Dotted Connector 2
                           Padding(
                             padding: const EdgeInsets.only(left: 0),
-                            child: _VerticalDottedLine(height: 10, color: const Color(0xFF98A2B3)),
+                            child: _VerticalDottedLine(
+                              height: 10,
+                              color: const Color(0xFF98A2B3),
+                            ),
                           ),
 
                           // 3. Timestamp Row
@@ -212,7 +216,10 @@ class TrackingCard extends StatelessWidget {
                           // Dotted Connector 3
                           Padding(
                             padding: const EdgeInsets.only(left: 0),
-                            child: _VerticalDottedLine(height: 10, color: const Color(0xFF98A2B3)),
+                            child: _VerticalDottedLine(
+                              height: 10,
+                              color: const Color(0xFF98A2B3),
+                            ),
                           ),
 
                           // 4. Location Address Row
@@ -259,47 +266,81 @@ class TrackingCard extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
                 child: Row(
                   children: [
-                    // 4 Action Square Buttons
-                    _buildSquareIconButton(
-                      Icons.ac_unit_rounded,
-                      data.isRunning ? const Color(0xFF00A3E0) : const Color(0xFF9E9E9E),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minWidth: constraints.maxWidth,
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // 4 Action Square Buttons
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildSquareIconButton(
+                                        Icons.ac_unit_rounded,
+                                        data.isRunning
+                                            ? const Color(0xFF00A3E0)
+                                            : const Color(0xFF9E9E9E),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildSquareIconButton(
+                                        Icons.podcasts_rounded,
+                                        const Color(0xFF00A859),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildSquareIconButton(
+                                        Icons.power_settings_new_rounded,
+                                        data.isRunning
+                                            ? const Color(0xFF00A859)
+                                            : const Color(0xFFE53935),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildSquareIconButton(
+                                        Icons.build_rounded,
+                                        data.isGreenVehicle
+                                            ? const Color(0xFF00A3E0)
+                                            : const Color(0xFFE53935),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Metric Pills Row
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildMetricPill(
+                                        icon: Icons.speed_rounded,
+                                        label: data.distanceKmText,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildMetricPill(
+                                        icon: Icons.calendar_month_outlined,
+                                        label: data.validityText,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    _buildSquareIconButton(
-                      Icons.podcasts_rounded,
-                      const Color(0xFF00A859),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildSquareIconButton(
-                      Icons.power_settings_new_rounded,
-                      data.isRunning ? const Color(0xFF00A859) : const Color(0xFFE53935),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildSquareIconButton(
-                      Icons.build_rounded,
-                      data.isGreenVehicle ? const Color(0xFF00A3E0) : const Color(0xFFE53935),
-                    ),
-
-                    const Spacer(),
-
-                    // Metric Pill 1: Odometer Distance
-                    _buildMetricPill(
-                      icon: Icons.speed_rounded,
-                      label: data.distanceKmText,
-                    ),
-                    const SizedBox(width: 6),
-
-                    // Metric Pill 2: Validity Days
-                    _buildMetricPill(
-                      icon: Icons.calendar_month_outlined,
-                      label: data.validityText,
-                    ),
-
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
 
                     // Bottom Right Action Blue Button (↗)
                     InkWell(
-                      onTap: onArrowTap ?? () => Get.to(() => const VehicleDetailMapView()),
+                      onTap:
+                          onArrowTap ??
+                          () => Get.to(() => const VehicleDetailMapView()),
                       child: Container(
                         width: 36,
                         height: 32,
@@ -372,10 +413,7 @@ class _VerticalDottedLine extends StatelessWidget {
   final double height;
   final Color color;
 
-  const _VerticalDottedLine({
-    required this.height,
-    required this.color,
-  });
+  const _VerticalDottedLine({required this.height, required this.color});
 
   @override
   Widget build(BuildContext context) {

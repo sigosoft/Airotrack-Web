@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
 import '../../../controllers/profile_controller.dart';
+import '../../../utils/custom_media_query.dart';
 
 class RaiseTicketContent extends StatelessWidget {
   const RaiseTicketContent({super.key});
@@ -11,6 +12,7 @@ class RaiseTicketContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ProfileController controller = Get.find<ProfileController>();
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     final vehicleOptions = [
       'KL 07 D 0518',
@@ -34,7 +36,7 @@ class RaiseTicketContent extends StatelessWidget {
           // Scrollable Form Content
           SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.all(isMobile ? 14 : 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -205,7 +207,7 @@ class RaiseTicketContent extends StatelessWidget {
 
                 // 5. Submit Button
                 SizedBox(
-                  width: 340,
+                  width: isMobile ? double.infinity : 340,
                   height: 42,
                   child: ElevatedButton(
                     onPressed: () {

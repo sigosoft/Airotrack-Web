@@ -13,20 +13,18 @@ class NotificationHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMobile = CustomMediaQuery.isMobile(context);
 
-    return Container(
-      height: 64,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Left: Menu Button (Mobile) + AIR TRACK Logo
-          Row(
-            children: [
-              if (isMobile) ...[
+    if (isMobile) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1)),
+        ),
+        child: Column(
+          children: [
+            // Row 1: Drawer Menu Icon + Logo + Search Box
+            Row(
+              children: [
                 Builder(
                   builder: (context) => IconButton(
                     icon: const Icon(
@@ -39,32 +37,141 @@ class NotificationHeader extends StatelessWidget {
                     constraints: const BoxConstraints(),
                   ),
                 ),
-                const SizedBox(width: 10),
-              ],
-              Image.asset(
-                AppAssets.logo,
-                height: 38,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Row(
-                  children: const [
-                    Icon(
-                      Icons.location_on,
-                      color: AppColors.buttonBlue,
-                      size: 28,
+                const SizedBox(width: 8),
+                Image.asset(
+                  AppAssets.logo,
+                  height: 32,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Row(
+                    children: const [
+                      Icon(
+                        Icons.location_on,
+                        color: AppColors.buttonBlue,
+                        size: 24,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'AIR TRACK',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4F5F7),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    SizedBox(width: 6),
-                    Text(
-                      'AIR TRACK',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                    child: TextField(
+                      onChanged: onSearchChanged,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF344054)),
+                      decoration: const InputDecoration(
+                        hintText: 'Search Vehicles',
+                        hintStyle: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF98A2B3),
+                          fontWeight: FontWeight.w400,
+                        ),
+                        suffixIcon: Icon(
+                          Icons.search_rounded,
+                          color: Color(0xFF98A2B3),
+                          size: 18,
+                        ),
+                        border: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        filled: false,
                       ),
                     ),
-                  ],
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Row 2: Date Pickers & Filter Button
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildDatePickerPill('28-08-2025 12:00 AM'),
+                  const SizedBox(width: 8),
+                  _buildDatePickerPill('28-08-2025 12:00 AM'),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: onFilterTap,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 36,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFFD0D5DD),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.tune_rounded,
+                        color: Color(0xFF344054),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC), width: 1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: AIR TRACK Logo
+          Image.asset(
+            AppAssets.logo,
+            height: 38,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => Row(
+              children: const [
+                Icon(
+                  Icons.location_on,
+                  color: AppColors.buttonBlue,
+                  size: 28,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'AIR TRACK',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
           ),
 
           // Middle: Search Vehicles Input Field (Single Pill Container)

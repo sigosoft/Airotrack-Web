@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../constants/app_assets.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
+import '../../../utils/custom_media_query.dart';
 
 class StatisticsViewContent extends StatefulWidget {
   const StatisticsViewContent({super.key});
@@ -41,21 +42,13 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
       'value': '10:49:23',
       'asset': AppAssets.stopDuration,
     },
-    {
-      'title': 'Stop Count',
-      'value': '10',
-      'asset': AppAssets.stopCount,
-    },
+    {'title': 'Stop Count', 'value': '10', 'asset': AppAssets.stopCount},
     {
       'title': 'Average Speed',
       'value': '30.09 kmph',
       'asset': AppAssets.averageSpeed,
     },
-    {
-      'title': 'Top Speed',
-      'value': '63 kmph',
-      'asset': AppAssets.topSpeed,
-    },
+    {'title': 'Top Speed', 'value': '63 kmph', 'asset': AppAssets.topSpeed},
     {
       'title': 'Over Speed Count',
       'value': '5',
@@ -66,16 +59,14 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
       'value': '30:10:11',
       'asset': AppAssets.engineHours,
     },
-    {
-      'title': 'Odometer',
-      'value': '5000 km',
-      'asset': AppAssets.odometes,
-    },
+    {'title': 'Odometer', 'value': '5000 km', 'asset': AppAssets.odometes},
   ];
 
   @override
   Widget build(BuildContext context) {
-    final VehicleDetailController controller = Get.find<VehicleDetailController>();
+    final VehicleDetailController controller =
+        Get.find<VehicleDetailController>();
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -84,52 +75,144 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
         children: [
           // 1. Top Navigation Header Bar
           Container(
-            height: 52,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(
                 bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
               ),
             ),
-            child: Row(
-              children: [
-                // Back Arrow Button
-                InkWell(
-                  onTap: () {
-                    if (Navigator.canPop(context)) {
-                      Get.back();
-                    } else {
-                      controller.selectTab(-1);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.arrow_back_rounded,
-                      size: 20,
-                      color: Color(0xFF1D2939),
+            child: isMobile
+                ? Column(
+                    children: [
+                      Row(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              if (Navigator.canPop(context)) {
+                                Get.back();
+                              } else {
+                                controller.selectTab(-1);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.arrow_back_rounded,
+                                size: 20,
+                                color: Color(0xFF1D2939),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildHeaderTab(
+                            'History',
+                            Icons.access_time_rounded,
+                            0,
+                            controller,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildHeaderTab(
+                            'Alerts',
+                            Icons.notifications_none_rounded,
+                            1,
+                            controller,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildHeaderTab(
+                            'Statistics',
+                            Icons.analytics_outlined,
+                            2,
+                            controller,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Obx(
+                              () => _buildDatePickerBox(
+                                controller.startDateStr.value,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Obx(
+                              () => _buildDatePickerBox(
+                                controller.endDateStr.value,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                : SizedBox(
+                    height: 36,
+                    child: Row(
+                      children: [
+                        // Back Arrow Button
+                        InkWell(
+                          onTap: () {
+                            if (Navigator.canPop(context)) {
+                              Get.back();
+                            } else {
+                              controller.selectTab(-1);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: const Padding(
+                            padding: EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.arrow_back_rounded,
+                              size: 20,
+                              color: Color(0xFF1D2939),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        // Navigation Header Tabs (History, Alerts, Statistics)
+                        _buildHeaderTab(
+                          'History',
+                          Icons.access_time_rounded,
+                          0,
+                          controller,
+                        ),
+                        const SizedBox(width: 24),
+                        _buildHeaderTab(
+                          'Alerts',
+                          Icons.notifications_none_rounded,
+                          1,
+                          controller,
+                        ),
+                        const SizedBox(width: 24),
+                        _buildHeaderTab(
+                          'Statistics',
+                          Icons.analytics_outlined,
+                          2,
+                          controller,
+                        ),
+
+                        const Spacer(),
+
+                        // Date Range Pickers (Start Date & End Date)
+                        Obx(
+                          () => _buildDatePickerBox(
+                            controller.startDateStr.value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Obx(
+                          () =>
+                              _buildDatePickerBox(controller.endDateStr.value),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-
-                // Navigation Header Tabs (History, Alerts, Statistics)
-                _buildHeaderTab('History', Icons.access_time_rounded, 0, controller),
-                const SizedBox(width: 24),
-                _buildHeaderTab('Alerts', Icons.notifications_none_rounded, 1, controller),
-                const SizedBox(width: 24),
-                _buildHeaderTab('Statistics', Icons.analytics_outlined, 2, controller),
-
-                const Spacer(),
-
-                // Date Range Pickers (Start Date & End Date)
-                Obx(() => _buildDatePickerBox(controller.startDateStr.value)),
-                const SizedBox(width: 12),
-                Obx(() => _buildDatePickerBox(controller.endDateStr.value)),
-              ],
-            ),
           ),
 
           // 2. Main Area (Vehicle Dropdown + 5x2 Stat Cards Grid)
@@ -142,11 +225,17 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
                   // Vehicle Dropdown Selector Button
                   Container(
                     width: 220,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                      border: Border.all(
+                        color: const Color(0xFFEAECF0),
+                        width: 1,
+                      ),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x06000000),
@@ -255,12 +344,7 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // PNG Icon Asset
-          Image.asset(
-            assetPath,
-            width: 38,
-            height: 38,
-            fit: BoxFit.contain,
-          ),
+          Image.asset(assetPath, width: 38, height: 38, fit: BoxFit.contain),
           const SizedBox(height: 12),
 
           // Title Label
@@ -307,10 +391,10 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
       return InkWell(
         onTap: () => controller.selectTab(index),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Spacer(),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, size: 17, color: color),
                 const SizedBox(width: 6),
@@ -324,7 +408,7 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
                 ),
               ],
             ),
-            const Spacer(),
+            const SizedBox(height: 6),
             // Blue underline indicator for selected tab
             Container(
               height: 2.5,

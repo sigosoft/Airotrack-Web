@@ -52,20 +52,13 @@ class _GeofenceViewState extends State<GeofenceView> {
       body: Column(
         children: [
           // 1. Top Header Bar (Search Geofence + Add Geofence Button)
-          Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
-              ),
-            ),
-            child: Row(
-              children: [
-                // Search Geofence Search Bar
-                Container(
-                  width: 320,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 768;
+
+              Widget buildSearchBox({double? width}) {
+                return Container(
+                  width: width,
                   height: 38,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
@@ -89,12 +82,11 @@ class _GeofenceViewState extends State<GeofenceView> {
                       ),
                     ],
                   ),
-                ),
+                );
+              }
 
-                const Spacer(),
-
-                // Add Geofence Button
-                InkWell(
+              Widget buildAddGeofenceButton() {
+                return InkWell(
                   onTap: () => _showAddGeofenceDialog(context),
                   child: Container(
                     height: 36,
@@ -114,179 +106,234 @@ class _GeofenceViewState extends State<GeofenceView> {
                       ),
                     ),
                   ),
+                );
+              }
+
+              return Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isNarrow ? 16 : 24,
+                  vertical: isNarrow ? 10 : 11,
                 ),
-              ],
-            ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
+                  ),
+                ),
+                child: isNarrow
+                    ? Row(
+                        children: [
+                          Expanded(child: buildSearchBox()),
+                          const SizedBox(width: 10),
+                          buildAddGeofenceButton(),
+                        ],
+                      )
+                    : SizedBox(
+                        height: 38,
+                        child: Row(
+                          children: [
+                            buildSearchBox(width: 320),
+                            const Spacer(),
+                            buildAddGeofenceButton(),
+                          ],
+                        ),
+                      ),
+              );
+            },
           ),
 
           // 2. Main Table Area
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
-                ),
-                child: Column(
-                  children: [
-                    // Table Header
-                    Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        border: Border(
-                          bottom: BorderSide(
-                            color: Color(0xFFEAECF0),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final double tableWidth = constraints.maxWidth < 750
+                      ? 750
+                      : constraints.maxWidth;
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: tableWidth,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFFEAECF0),
                             width: 1,
                           ),
                         ),
-                      ),
-                      child: Row(
-                        children: const [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              'Name',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
+                        child: Column(
+                          children: [
+                            // Table Header
+                            Container(
+                              height: 48,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
                               ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              'Type',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              'Address',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 4,
-                            child: Text(
-                              'Description',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                'Quick Actions',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: Color(0xFFEAECF0),
+                                    width: 1,
+                                  ),
                                 ),
                               ),
+                              child: Row(
+                                children: const [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      'Name',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      'Type',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      'Address',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 4,
+                                    child: Text(
+                                      'Description',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        'Quick Actions',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+
+                            // Table Rows
+                            for (int i = 0; i < _geofenceList.length; i++) ...[
+                              _buildTableRow(_geofenceList[i]),
+                              if (i < _geofenceList.length - 1)
+                                const Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: Color(0xFFEAECF0),
+                                ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
-
-                    // Table Rows
-                    for (int i = 0; i < _geofenceList.length; i++) ...[
-                      _buildTableRow(_geofenceList[i]),
-                      if (i < _geofenceList.length - 1)
-                        const Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: Color(0xFFEAECF0),
-                        ),
-                    ],
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),
 
           // 3. Bottom Pagination Footer
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (int i = 1; i <= 10; i++) ...[
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedPage = i;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _selectedPage == i
-                            ? const Color(0xFF00A3E0)
-                            : Colors.transparent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$i',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.bold,
-                          color: _selectedPage == i
-                              ? Colors.white
-                              : const Color(0xFF344054),
+          if ((_geofenceList.length / 10).ceil() > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (int i = 1; i <= (_geofenceList.length / 10).ceil(); i++) ...[
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedPage = i;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _selectedPage == i
+                                ? const Color(0xFF00A3E0)
+                                : Colors.transparent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '$i',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedPage == i
+                                  ? Colors.white
+                                  : const Color(0xFF344054),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
+                      const SizedBox(width: 12),
+                    ],
 
-                const SizedBox(width: 8),
+                    const SizedBox(width: 8),
 
-                // NEXT Button
-                InkWell(
-                  onTap: () {
-                    if (_selectedPage < 10) {
-                      setState(() {
-                        _selectedPage++;
-                      });
-                    }
-                  },
-                  child: const Text(
-                    'NEXT',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF00A3E0),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
+                    // NEXT Button
+                    if (_selectedPage < (_geofenceList.length / 10).ceil())
+                      InkWell(
+                        onTap: () {
+                          if (_selectedPage < (_geofenceList.length / 10).ceil()) {
+                            setState(() {
+                              _selectedPage++;
+                            });
+                          }
+                        },
+                        child: const Text(
+                          'NEXT',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00A3E0),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -467,16 +514,361 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
   ];
 
   @override
+  @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final bool isMobile = screenWidth < 768;
+
+    Widget buildMapSection({required bool isMobileLayout}) {
+      return Column(
+        children: [
+          // Map Header Bar with Title & Search Input
+          Container(
+            height: 54,
+            padding: EdgeInsets.only(left: 16, right: isMobileLayout ? 48 : 16),
+            color: Colors.white,
+            child: Row(
+              children: [
+                const Text(
+                  'Add Geofence',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1D2939),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF2F4F7),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: const [
+                        Expanded(
+                          child: Text(
+                            'Search for a Place',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF98A2B3),
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.search_rounded,
+                          size: 16,
+                          color: Color(0xFF667085),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Interactive Map Area
+          Expanded(
+            flex: isMobileLayout ? 0 : 1,
+            child: SizedBox(
+              height: isMobileLayout ? 220 : null,
+              child: Stack(
+                children: [
+                  FlutterMap(
+                    options: MapOptions(
+                      initialCenter: _center,
+                      initialZoom: 13.5,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.airotrack.app',
+                      ),
+                      if (_selectedShape == 'circle')
+                        CircleLayer(
+                          circles: [
+                            CircleMarker(
+                              point: _center,
+                              radius: 1200,
+                              useRadiusInMeter: true,
+                              color: const Color(0x3300A3E0),
+                              borderColor: const Color(0xFF00A3E0),
+                              borderStrokeWidth: 2,
+                            ),
+                          ],
+                        ),
+                      if (_selectedShape == 'rectangle')
+                        PolygonLayer(
+                          polygons: [
+                            Polygon(
+                              points: _rectanglePoints,
+                              color: const Color(0x3300A3E0),
+                              borderColor: const Color(0xFF00A3E0),
+                              borderStrokeWidth: 2,
+                              isFilled: true,
+                            ),
+                          ],
+                        ),
+                      if (_selectedShape == 'polygon')
+                        PolygonLayer(
+                          polygons: [
+                            Polygon(
+                              points: _polygonPoints,
+                              color: const Color(0x3300A3E0),
+                              borderColor: const Color(0xFF00A3E0),
+                              borderStrokeWidth: 2,
+                              isFilled: true,
+                            ),
+                          ],
+                        ),
+                      if (_selectedShape == 'circle')
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: _center,
+                              width: 12,
+                              height: 12,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00A3E0),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+
+                  // Floating Shape Selection Toolbar (Top-Right of Map)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x1F000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          _buildToolbarButton(
+                            icon: Icons.crop_free_rounded,
+                            isSelected: false,
+                            onTap: () {},
+                          ),
+                          _buildToolbarButton(
+                            icon: Icons.pentagon_outlined,
+                            isSelected: _selectedShape == 'polygon',
+                            onTap: () {
+                              setState(() {
+                                _selectedShape = 'polygon';
+                              });
+                            },
+                          ),
+                          _buildToolbarButton(
+                            icon: Icons.panorama_fish_eye_rounded,
+                            isSelected: _selectedShape == 'circle',
+                            onTap: () {
+                              setState(() {
+                                _selectedShape = 'circle';
+                              });
+                            },
+                          ),
+                          _buildToolbarButton(
+                            icon: Icons.crop_square_rounded,
+                            isSelected: _selectedShape == 'rectangle',
+                            onTap: () {
+                              setState(() {
+                                _selectedShape = 'rectangle';
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildFormSection() {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: isMobile
+              ? const Border(
+                  top: BorderSide(color: Color(0xFFEAECF0), width: 1),
+                )
+              : const Border(
+                  left: BorderSide(color: Color(0xFFEAECF0), width: 1),
+                ),
+          borderRadius: isMobile
+              ? const BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                )
+              : const BorderRadius.only(
+                  topRight: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: isMobile ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            // Field 1: Fence Name
+            _buildFormField(
+              label: 'Fence Name',
+              child: _buildTextInputField('Enter Fence Name'),
+            ),
+            const SizedBox(height: 12),
+
+            // Field 2: Event Type
+            _buildFormField(
+              label: 'Event Type',
+              child: _buildDropdownField('Entry'),
+            ),
+            const SizedBox(height: 12),
+
+            // Field 3: Address
+            _buildFormField(
+              label: 'Address',
+              child: _buildTextInputField('Enter your address'),
+            ),
+            const SizedBox(height: 12),
+
+            // Field 4: Description (Multiline)
+            _buildFormField(
+              label: 'Description',
+              child: Container(
+                height: 70,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFAFAFA),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                ),
+                child: const Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    'Give a short description',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFFB0B7C3)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Field 5: Tolerance
+            _buildFormField(
+              label: 'Tolerance',
+              child: _buildDropdownField('5'),
+            ),
+            const SizedBox(height: 16),
+
+            // Bottom Action Buttons (Cancel & Submit)
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFAFAFA),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFFEAECF0),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D2939),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00A3E0),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Submit',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 24,
+        vertical: isMobile ? 12 : 24,
+      ),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: 880,
-            height: 560,
+            width: isMobile ? screenWidth - 24 : 880,
+            height: isMobile ? null : 560,
+            constraints: isMobile
+                ? BoxConstraints(maxHeight: screenHeight - 32)
+                : null,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -488,352 +880,45 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                // Left Column: Map Area & Top Search Header (~58% Width)
-                Expanded(
-                  flex: 58,
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      bottomLeft: Radius.circular(16),
-                    ),
+            child: isMobile
+                ? SingleChildScrollView(
                     child: Column(
                       children: [
-                        // Map Header Bar with Title & Search Input
-                        Container(
-                          height: 54,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          color: Colors.white,
-                          child: Row(
-                            children: [
-                              const Text(
-                                'Add Geofence',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Container(
-                                  height: 36,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF2F4F7),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    children: const [
-                                      Text(
-                                        'Search for a Place',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xFF98A2B3),
-                                        ),
-                                      ),
-                                      Spacer(),
-                                      Icon(
-                                        Icons.search_rounded,
-                                        size: 16,
-                                        color: Color(0xFF667085),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                        ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            topRight: Radius.circular(16),
                           ),
+                          child: buildMapSection(isMobileLayout: true),
                         ),
-
-                        // Interactive Map Area
-                        Expanded(
-                          child: Stack(
-                            children: [
-                              FlutterMap(
-                                options: MapOptions(
-                                  initialCenter: _center,
-                                  initialZoom: 13.5,
-                                ),
-                                children: [
-                                  TileLayer(
-                                    urlTemplate:
-                                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                    userAgentPackageName: 'com.airotrack.app',
-                                  ),
-                                  if (_selectedShape == 'circle')
-                                    CircleLayer(
-                                      circles: [
-                                        CircleMarker(
-                                          point: _center,
-                                          radius: 1200,
-                                          useRadiusInMeter: true,
-                                          color: const Color(0x3300A3E0),
-                                          borderColor: const Color(0xFF00A3E0),
-                                          borderStrokeWidth: 2,
-                                        ),
-                                      ],
-                                    ),
-                                  if (_selectedShape == 'rectangle')
-                                    PolygonLayer(
-                                      polygons: [
-                                        Polygon(
-                                          points: _rectanglePoints,
-                                          color: const Color(0x3300A3E0),
-                                          borderColor: const Color(0xFF00A3E0),
-                                          borderStrokeWidth: 2,
-                                          isFilled: true,
-                                        ),
-                                      ],
-                                    ),
-                                  if (_selectedShape == 'polygon')
-                                    PolygonLayer(
-                                      polygons: [
-                                        Polygon(
-                                          points: _polygonPoints,
-                                          color: const Color(0x3300A3E0),
-                                          borderColor: const Color(0xFF00A3E0),
-                                          borderStrokeWidth: 2,
-                                          isFilled: true,
-                                        ),
-                                      ],
-                                    ),
-                                  if (_selectedShape == 'circle')
-                                    MarkerLayer(
-                                      markers: [
-                                        Marker(
-                                          point: _center,
-                                          width: 12,
-                                          height: 12,
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF00A3E0),
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: Colors.white,
-                                                width: 1.5,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-
-                              // Floating Shape Selection Toolbar (Top-Right of Map)
-                              Positioned(
-                                top: 16,
-                                right: 16,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(8),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x1F000000),
-                                        blurRadius: 8,
-                                        offset: Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      _buildToolbarButton(
-                                        icon: Icons.crop_free_rounded,
-                                        isSelected: false,
-                                        onTap: () {},
-                                      ),
-                                      _buildToolbarButton(
-                                        icon: Icons.pentagon_outlined,
-                                        isSelected: _selectedShape == 'polygon',
-                                        onTap: () {
-                                          setState(() {
-                                            _selectedShape = 'polygon';
-                                          });
-                                        },
-                                      ),
-                                      _buildToolbarButton(
-                                        icon: Icons.panorama_fish_eye_rounded,
-                                        isSelected: _selectedShape == 'circle',
-                                        onTap: () {
-                                          setState(() {
-                                            _selectedShape = 'circle';
-                                          });
-                                        },
-                                      ),
-                                      _buildToolbarButton(
-                                        icon: Icons.crop_square_rounded,
-                                        isSelected:
-                                            _selectedShape == 'rectangle',
-                                        onTap: () {
-                                          setState(() {
-                                            _selectedShape = 'rectangle';
-                                          });
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        buildFormSection(),
                       ],
                     ),
-                  ),
-                ),
-
-                // Right Column: Form Controls Area (~42% Width)
-                Expanded(
-                  flex: 42,
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                        left: BorderSide(color: Color(0xFFEAECF0), width: 1),
-                      ),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Field 1: Fence Name
-                        _buildFormField(
-                          label: 'Fence Name',
-                          child: _buildTextInputField('Enter Fence Name'),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Field 2: Event Type
-                        _buildFormField(
-                          label: 'Event Type',
-                          child: _buildDropdownField('Entry'),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Field 3: Address
-                        _buildFormField(
-                          label: 'Address',
-                          child: _buildTextInputField('Enter your address'),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Field 4: Description (Multiline)
-                        _buildFormField(
-                          label: 'Description',
-                          child: Container(
-                            height: 70,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFAFAFA),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFFEAECF0),
-                                width: 1,
-                              ),
-                            ),
-                            child: const Align(
-                              alignment: Alignment.topLeft,
-                              child: Text(
-                                'Give a short description',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Color(0xFFB0B7C3),
-                                ),
-                              ),
-                            ),
+                  )
+                : Row(
+                    children: [
+                      // Left Column: Map Area & Top Search Header (~58% Width)
+                      Expanded(
+                        flex: 58,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            bottomLeft: Radius.circular(16),
                           ),
+                          child: buildMapSection(isMobileLayout: false),
                         ),
-                        const SizedBox(height: 12),
+                      ),
 
-                        // Field 5: Tolerance
-                        _buildFormField(
-                          label: 'Tolerance',
-                          child: _buildDropdownField('5'),
-                        ),
-                        const Spacer(),
-
-                        // Bottom Action Buttons (Cancel & Submit)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.of(context).pop();
-                                },
-                                child: Container(
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFAFAFA),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: const Color(0xFFEAECF0),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: const Center(
-                                    child: Text(
-                                      'Cancel',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1D2939),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.of(context).pop();
-                                },
-                                child: Container(
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF00A3E0),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Center(
-                                    child: Text(
-                                      'Submit',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                      // Right Column: Form Controls Area (~42% Width)
+                      Expanded(flex: 42, child: buildFormSection()),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
 
           // Floating Close 'X' Button on Top-Right Corner
           Positioned(
-            top: -12,
-            right: -12,
+            top: isMobile ? 11 : -12,
+            right: isMobile ? 10 : -12,
             child: InkWell(
               onTap: () {
                 Navigator.of(context).pop();

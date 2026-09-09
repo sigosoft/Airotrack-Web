@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
+import '../../../utils/custom_media_query.dart';
 
 class GeneralSettingsContent extends StatelessWidget {
   const GeneralSettingsContent({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = CustomMediaQuery.isMobile(context);
+
     final settingsList = [
       {'title': 'Show History on Live', 'asset': AppAssets.liveHistory},
       {'title': 'Vehicle Icon Size', 'asset': AppAssets.vehicleSize},
@@ -20,7 +23,7 @@ class GeneralSettingsContent extends StatelessWidget {
 
     return Container(
       color: const Color(0xFFF8FAFC),
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isMobile ? 14 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -30,6 +30,26 @@ class VehicleDetailMapView extends StatelessWidget {
           return const StatisticsViewContent();
         }
 
+        if (isMobile) {
+          return Column(
+            children: [
+              // Top Interactive Map Container Area (Map on Top)
+              SizedBox(
+                height: 380,
+                child: TrackingMapContainer(
+                  selectedTab: controller.selectedTopTab.value,
+                  onTabSelected: controller.selectTab,
+                ),
+              ),
+
+              // Bottom Vehicle Details Metrics Options
+              Expanded(
+                child: VehicleInfoSidebar(data: controller.vehicleDetail.value),
+              ),
+            ],
+          );
+        }
+
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

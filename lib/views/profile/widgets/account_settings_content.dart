@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../constants/app_colors.dart';
 import '../../../controllers/profile_controller.dart';
+import '../../../utils/custom_media_query.dart';
 
 class AccountSettingsContent extends StatelessWidget {
   const AccountSettingsContent({super.key});
@@ -10,10 +11,11 @@ class AccountSettingsContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ProfileController controller = Get.find<ProfileController>();
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     return Container(
       color: const Color(0xFFF8FAFC),
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isMobile ? 14 : 24),
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         child: Column(
@@ -32,7 +34,7 @@ class AccountSettingsContent extends StatelessWidget {
 
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(isMobile ? 16 : 24),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -113,7 +115,7 @@ class AccountSettingsContent extends StatelessWidget {
 
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(isMobile ? 16 : 24),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),

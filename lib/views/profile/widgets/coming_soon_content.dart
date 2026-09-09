@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/custom_media_query.dart';
+
 class ComingSoonContent extends StatelessWidget {
   final String title;
 
-  const ComingSoonContent({
-    super.key,
-    required this.title,
-  });
+  const ComingSoonContent({super.key, required this.title});
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = CustomMediaQuery.isMobile(context);
+
     return Container(
       color: const Color(0xFFF8FAFC),
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isMobile ? 14 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -47,10 +48,7 @@ class ComingSoonContent extends StatelessWidget {
                   SizedBox(height: 8),
                   Text(
                     'This feature is currently under development.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF667085),
-                    ),
+                    style: TextStyle(fontSize: 13, color: Color(0xFF667085)),
                   ),
                 ],
               ),

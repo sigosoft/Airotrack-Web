@@ -67,20 +67,23 @@ class NotificationView extends StatelessWidget {
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(isMobile ? 12 : 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Top Tab Bar Pills (Alerts, Announcements, Reminders)
                         Obx(() {
-                          return Row(
-                            children: [
-                              _buildTabPill('Alerts', 0, controller),
-                              const SizedBox(width: 12),
-                              _buildTabPill('Announcements', 1, controller),
-                              const SizedBox(width: 12),
-                              _buildTabPill('Reminders', 2, controller),
-                            ],
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildTabPill('Alerts', 0, controller),
+                                const SizedBox(width: 12),
+                                _buildTabPill('Announcements', 1, controller),
+                                const SizedBox(width: 12),
+                                _buildTabPill('Reminders', 2, controller),
+                              ],
+                            ),
                           );
                         }),
                         const SizedBox(height: 24),
@@ -100,10 +103,18 @@ class NotificationView extends StatelessWidget {
 
                         // Bottom Pagination Row (1 2 3 4 5 6 7 8 9 10 NEXT)
                         Obx(() {
+                          final notifications =
+                              controller.notificationData.value.notifications;
+                          final totalPages = (notifications.length / 10).ceil();
+
+                          if (totalPages <= 1) {
+                            return const SizedBox.shrink();
+                          }
+
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              ...List.generate(10, (index) {
+                              ...List.generate(totalPages, (index) {
                                 final pageNum = index + 1;
                                 final isActive = controller.currentPage.value == pageNum;
 
@@ -131,22 +142,23 @@ class NotificationView extends StatelessWidget {
                                 );
                               }),
                               const SizedBox(width: 12),
-                              InkWell(
-                                onTap: () {
-                                  if (controller.currentPage.value < 10) {
-                                    controller.selectPage(controller.currentPage.value + 1);
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              if (controller.currentPage.value < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (controller.currentPage.value < totalPages) {
+                                      controller.selectPage(controller.currentPage.value + 1);
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
                             ],
                           );
                         }),

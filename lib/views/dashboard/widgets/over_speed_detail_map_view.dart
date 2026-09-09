@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../utils/custom_media_query.dart';
+
 class OverSpeedDetailMapView extends StatefulWidget {
   final Map<String, dynamic>? reportData;
 
@@ -21,7 +23,9 @@ class _OverSpeedDetailMapViewState extends State<OverSpeedDetailMapView> {
   @override
   Widget build(BuildContext context) {
     final vehicle = widget.reportData?['vehicle'] ?? 'KL 07 D 0518';
-    final timestamp = widget.reportData?['time'] ?? '08 Oct 2025 12:30 PM';
+    final timestamp = widget.reportData?['timestamp'] ?? '08 Oct 2025 12:30 PM';
+    final speed = widget.reportData?['speed'] ?? '85 Km/h';
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -114,12 +118,13 @@ class _OverSpeedDetailMapViewState extends State<OverSpeedDetailMapView> {
                 // Info Dialog Box Overlay matching reference screenshot
                 if (_isDialogVisible)
                   Positioned(
-                    left: 180,
-                    bottom: 120,
+                    left: isMobile ? 16 : 180,
+                    right: isMobile ? 16 : null,
+                    bottom: isMobile ? 20 : 120,
                     child: Material(
                       color: Colors.transparent,
                       child: Container(
-                        width: 310,
+                        width: isMobile ? null : 310,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.white,

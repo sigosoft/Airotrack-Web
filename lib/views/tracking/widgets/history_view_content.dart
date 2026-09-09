@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../controllers/vehicle_detail_controller.dart';
+import '../../../utils/custom_media_query.dart';
 
 class HistoryViewContent extends StatelessWidget {
   const HistoryViewContent({super.key});
@@ -12,6 +13,7 @@ class HistoryViewContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final VehicleDetailController controller =
         Get.find<VehicleDetailController>();
+    final isMobile = CustomMediaQuery.isMobile(context);
 
     // Kalamassery / Kochi route points for History view matching reference screenshot
     final routePoints = [
@@ -30,13 +32,310 @@ class HistoryViewContent extends StatelessWidget {
       const LatLng(10.034, 76.310),
     ];
 
+    Widget buildMapStack() {
+      return Stack(
+        children: [
+          // OpenStreetMap Canvas
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: const LatLng(10.038, 76.325),
+              initialZoom: 13.5,
+              onTap: (tapPosition, point) {
+                controller.toggleHistoryMapDialog();
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.airotrack.app',
+              ),
+              // Route Black Polyline
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: routePoints,
+                    color: Colors.black,
+                    strokeWidth: 3.5,
+                  ),
+                ],
+              ),
+              // Numbered Route Nodes (1, 2, 3)
+              MarkerLayer(
+                markers: [
+                  _buildNodeMarker(nodePoints[0], '1', controller),
+                  _buildNodeMarker(nodePoints[1], '2', controller),
+                  _buildNodeMarker(nodePoints[2], '3', controller),
+                ],
+              ),
+            ],
+          ),
+
+          // Route Node Info Popup Dialog (Matching Reference Screenshot 2)
+          Obx(() {
+            if (!controller.isHistoryMapDialogVisible.value) {
+              return const SizedBox.shrink();
+            }
+
+            return Positioned(
+              left: isMobile ? 20 : 180,
+              bottom: isMobile ? 80 : 140,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: isMobile ? 280 : 310,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1F000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Close 'X' button
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: InkWell(
+                          onTap: controller.hideHistoryMapDialog,
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF2F4F7),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: 14,
+                              color: Color(0xFF344054),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+
+                      _buildDialogRow('Arrival Time:', '08 Oct 2025 11:00 AM'),
+                      const SizedBox(height: 5),
+                      _buildDialogRow(
+                        'Departure Time:',
+                        '08 Oct 2025 12:30 PM',
+                      ),
+                      const SizedBox(height: 5),
+                      _buildDialogRow('Duration:', '01h 30m'),
+                      const SizedBox(height: 5),
+                      _buildDialogRow(
+                        'Address:',
+                        'Puthiyakavu Junction,Karunagappalli, Kerala 690539, India',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // Right Floating Action Map Toolbar
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Column(
+              children: const [
+                _HistoryMapIconButton(icon: Icons.map_outlined),
+                _HistoryMapIconButton(icon: Icons.location_on_outlined),
+                _HistoryMapIconButton(text: 'P', color: Color(0xFF00A859)),
+                _HistoryMapIconButton(icon: Icons.my_location_rounded),
+              ],
+            ),
+          ),
+
+          // Zoom Buttons
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: Column(
+              children: const [
+                _HistoryMapIconButton(icon: Icons.add_rounded),
+                _HistoryMapIconButton(icon: Icons.remove_rounded),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildHistorySidebar() {
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Top 3 Metric Cards Row (0 Kmph, 00:00:00, 12.5 Km)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    icon: Icons.dashboard_outlined,
+                    value: '0',
+                    unit: 'Kmph',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildMetricCard(
+                    icon: Icons.access_time_rounded,
+                    value: '00:00:00',
+                    unit: '',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildMetricCard(
+                    icon: Icons.speed_rounded,
+                    value: '12.5',
+                    unit: 'Km',
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // 2. Playback Bar Card (Play, Slider, 1x, Replay, Tune)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+              ),
+              child: Obx(
+                () => Row(
+                  children: [
+                    // Play / Pause circular button
+                    InkWell(
+                      onTap: controller.togglePlay,
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF0288D1),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          controller.isPlaying.value
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 16,
+                          color: const Color(0xFF0288D1),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Progress Slider
+                    Expanded(
+                      child: SliderTheme(
+                        data: SliderThemeData(
+                          trackHeight: 3,
+                          activeTrackColor: const Color(0xFF0288D1),
+                          inactiveTrackColor: const Color(0xFFE4E7EC),
+                          thumbColor: const Color(0xFF0288D1),
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 5,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 10,
+                          ),
+                        ),
+                        child: Slider(
+                          value: controller.playbackProgress.value,
+                          onChanged: (val) {
+                            controller.playbackProgress.value = val;
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // 1x Speed Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0288D1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        '1x',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Replay Icon
+                    const Icon(
+                      Icons.replay_rounded,
+                      size: 16,
+                      color: Color(0xFF0288D1),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Settings / Tune Icon
+                    const Icon(
+                      Icons.tune_rounded,
+                      size: 16,
+                      color: Color(0xFF0288D1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // 3. History Trip / Stop Item Card 1 (Red Stop Badge)
+            _buildHistoryTripCard(
+              badgeLabel: 'Stop',
+              badgeBgColor: const Color(0xFFFEE4E2),
+              badgeTextColor: const Color(0xFFF04438),
+            ),
+
+            const SizedBox(height: 12),
+
+            // 4. History Trip / Stop Item Card 2 (Green Stop Badge)
+            _buildHistoryTripCard(
+              badgeLabel: 'Stop',
+              badgeBgColor: const Color(0xFFD1FADF),
+              badgeTextColor: const Color(0xFF12B76A),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: Column(
         children: [
           // 1. Top Navigation Header Bar
           Container(
-            height: 52,
+            height: isMobile ? null : 52,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -44,407 +343,203 @@ class HistoryViewContent extends StatelessWidget {
                 bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
               ),
             ),
-            child: Row(
-              children: [
-                // Back Arrow Button
-                InkWell(
-                  onTap: () {
-                    if (Navigator.canPop(context)) {
-                      Get.back();
-                    } else {
-                      controller.selectTab(-1);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.arrow_back_rounded,
-                      size: 20,
-                      color: Color(0xFF1D2939),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-
-                // Navigation Header Tabs (History, Alerts, Statistics)
-                _buildHeaderTab(
-                  'History',
-                  Icons.access_time_rounded,
-                  0,
-                  controller,
-                ),
-                const SizedBox(width: 24),
-                _buildHeaderTab(
-                  'Alerts',
-                  Icons.notifications_none_rounded,
-                  1,
-                  controller,
-                ),
-                const SizedBox(width: 24),
-                _buildHeaderTab(
-                  'Statistics',
-                  Icons.analytics_outlined,
-                  2,
-                  controller,
-                ),
-
-                const Spacer(),
-
-                // Date Range Pickers (Start Date & End Date)
-                Obx(() => _buildDatePickerBox(controller.startDateStr.value)),
-                const SizedBox(width: 12),
-                Obx(() => _buildDatePickerBox(controller.endDateStr.value)),
-                const SizedBox(width: 12),
-
-                // Filter Sliders Icon Button
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: const Color(0xFFD0D5DD),
-                      width: 1,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.tune_rounded,
-                    size: 15,
-                    color: Color(0xFF344054),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 2. Main Area (Left Map + Right History Sidebar)
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Left Map Area
-                Expanded(
-                  child: Stack(
+            child: isMobile
+                ? Column(
                     children: [
-                      // OpenStreetMap Canvas
-                      FlutterMap(
-                        options: MapOptions(
-                          initialCenter: const LatLng(10.038, 76.325),
-                          initialZoom: 13.5,
-                          onTap: (tapPosition, point) {
-                            controller.toggleHistoryMapDialog();
-                          },
-                        ),
+                      const SizedBox(height: 8),
+                      Row(
                         children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.airotrack.app',
-                          ),
-                          // Route Black Polyline
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: routePoints,
-                                color: Colors.black,
-                                strokeWidth: 3.5,
+                          InkWell(
+                            onTap: () {
+                              if (Navigator.canPop(context)) {
+                                Get.back();
+                              } else {
+                                controller.selectTab(-1);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.arrow_back_rounded,
+                                size: 20,
+                                color: Color(0xFF1D2939),
                               ),
-                            ],
+                            ),
                           ),
-                          // Numbered Route Nodes (1, 2, 3)
-                          MarkerLayer(
-                            markers: [
-                              _buildNodeMarker(nodePoints[0], '1', controller),
-                              _buildNodeMarker(nodePoints[1], '2', controller),
-                              _buildNodeMarker(nodePoints[2], '3', controller),
-                            ],
+                          const SizedBox(width: 8),
+                          _buildHeaderTab(
+                            'History',
+                            Icons.access_time_rounded,
+                            0,
+                            controller,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildHeaderTab(
+                            'Alerts',
+                            Icons.notifications_none_rounded,
+                            1,
+                            controller,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildHeaderTab(
+                            'Statistics',
+                            Icons.analytics_outlined,
+                            2,
+                            controller,
                           ),
                         ],
                       ),
-
-                      // Route Node Info Popup Dialog (Matching Reference Screenshot 2)
-                      Obx(() {
-                        if (!controller.isHistoryMapDialogVisible.value) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return Positioned(
-                          left: 180,
-                          bottom: 140,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: Container(
-                              width: 310,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x1F000000),
-                                    blurRadius: 16,
-                                    offset: Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Close 'X' button
-                                  Align(
-                                    alignment: Alignment.topRight,
-                                    child: InkWell(
-                                      onTap: controller.hideHistoryMapDialog,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFF2F4F7),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.close_rounded,
-                                          size: 14,
-                                          color: Color(0xFF344054),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-
-                                  _buildDialogRow(
-                                    'Arrival Time:',
-                                    '08 Oct 2025 11:00 AM',
-                                  ),
-                                  const SizedBox(height: 5),
-                                  _buildDialogRow(
-                                    'Departure Time:',
-                                    '08 Oct 2025 12:30 PM',
-                                  ),
-                                  const SizedBox(height: 5),
-                                  _buildDialogRow('Duration:', '01h 30m'),
-                                  const SizedBox(height: 5),
-                                  _buildDialogRow(
-                                    'Address:',
-                                    'Puthiyakavu Junction,Karunagappalli, Kerala 690539, India',
-                                  ),
-                                ],
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Obx(
+                              () => _buildDatePickerBox(
+                                controller.startDateStr.value,
                               ),
                             ),
                           ),
-                        );
-                      }),
-
-                      // Right Floating Action Map Toolbar
-                      Positioned(
-                        top: 16,
-                        right: 16,
-                        child: Column(
-                          children: const [
-                            _HistoryMapIconButton(icon: Icons.map_outlined),
-                            _HistoryMapIconButton(
-                              icon: Icons.location_on_outlined,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Obx(
+                              () => _buildDatePickerBox(
+                                controller.endDateStr.value,
+                              ),
                             ),
-                            _HistoryMapIconButton(
-                              text: 'P',
-                              color: Color(0xFF00A859),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFFD0D5DD),
+                                width: 1,
+                              ),
                             ),
-                            _HistoryMapIconButton(
-                              icon: Icons.my_location_rounded,
+                            child: const Icon(
+                              Icons.tune_rounded,
+                              size: 15,
+                              color: Color(0xFF344054),
                             ),
-                          ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      // Back Arrow Button
+                      InkWell(
+                        onTap: () {
+                          if (Navigator.canPop(context)) {
+                            Get.back();
+                          } else {
+                            controller.selectTab(-1);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.all(6),
+                          child: Icon(
+                            Icons.arrow_back_rounded,
+                            size: 20,
+                            color: Color(0xFF1D2939),
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 16),
 
-                      // Zoom Buttons
-                      Positioned(
-                        bottom: 16,
-                        right: 16,
-                        child: Column(
-                          children: const [
-                            _HistoryMapIconButton(icon: Icons.add_rounded),
-                            _HistoryMapIconButton(icon: Icons.remove_rounded),
-                          ],
+                      // Navigation Header Tabs
+                      _buildHeaderTab(
+                        'History',
+                        Icons.access_time_rounded,
+                        0,
+                        controller,
+                      ),
+                      const SizedBox(width: 24),
+                      _buildHeaderTab(
+                        'Alerts',
+                        Icons.notifications_none_rounded,
+                        1,
+                        controller,
+                      ),
+                      const SizedBox(width: 24),
+                      _buildHeaderTab(
+                        'Statistics',
+                        Icons.analytics_outlined,
+                        2,
+                        controller,
+                      ),
+
+                      const Spacer(),
+
+                      // Date Range Pickers
+                      Obx(
+                        () =>
+                            _buildDatePickerBox(controller.startDateStr.value),
+                      ),
+                      const SizedBox(width: 12),
+                      Obx(
+                        () => _buildDatePickerBox(controller.endDateStr.value),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Filter Sliders Icon Button
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: const Color(0xFFD0D5DD),
+                            width: 1,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.tune_rounded,
+                          size: 15,
+                          color: Color(0xFF344054),
                         ),
                       ),
                     ],
                   ),
-                ),
+          ),
 
-                // Right History Details Sidebar
-                Container(
-                  width: 340,
-                  color: const Color(0xFFF4F6F9),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 1. Top 3 Metric Cards Row (0 Kmph, 00:00:00, 12.5 Km)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildMetricCard(
-                                icon: Icons.dashboard_outlined,
-                                value: '0',
-                                unit: 'Kmph',
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildMetricCard(
-                                icon: Icons.access_time_rounded,
-                                value: '00:00:00',
-                                unit: '',
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildMetricCard(
-                                icon: Icons.speed_rounded,
-                                value: '12.5',
-                                unit: 'Km',
-                              ),
-                            ),
-                          ],
+          // 2. Main Area (Left Map + Right History Sidebar)
+          Expanded(
+            child: isMobile
+                ? Column(
+                    children: [
+                      // Top Map View
+                      SizedBox(height: 360, child: buildMapStack()),
+                      // Bottom History Details Sidebar
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          color: const Color(0xFFF4F6F9),
+                          child: buildHistorySidebar(),
                         ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Left Map Area
+                      Expanded(child: buildMapStack()),
 
-                        const SizedBox(height: 12),
-
-                        // 2. Playback Bar Card (Play, Slider, 1x, Replay, Tune)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFEAECF0),
-                              width: 1,
-                            ),
-                          ),
-                          child: Obx(
-                            () => Row(
-                              children: [
-                                // Play / Pause circular button
-                                InkWell(
-                                  onTap: controller.togglePlay,
-                                  child: Container(
-                                    width: 26,
-                                    height: 26,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: const Color(0xFF0288D1),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      controller.isPlaying.value
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                      size: 16,
-                                      color: const Color(0xFF0288D1),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // Progress Slider
-                                Expanded(
-                                  child: SliderTheme(
-                                    data: SliderThemeData(
-                                      trackHeight: 3,
-                                      activeTrackColor: const Color(0xFF0288D1),
-                                      inactiveTrackColor: const Color(
-                                        0xFFE4E7EC,
-                                      ),
-                                      thumbColor: const Color(0xFF0288D1),
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 5,
-                                      ),
-                                      overlayShape:
-                                          const RoundSliderOverlayShape(
-                                            overlayRadius: 10,
-                                          ),
-                                    ),
-                                    child: Slider(
-                                      value: controller.playbackProgress.value,
-                                      onChanged: (val) {
-                                        controller.playbackProgress.value = val;
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // 1x Speed Badge
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0288D1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    '1x',
-                                    style: TextStyle(
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // Replay Icon
-                                const Icon(
-                                  Icons.replay_rounded,
-                                  size: 16,
-                                  color: Color(0xFF0288D1),
-                                ),
-                                const SizedBox(width: 6),
-
-                                // Settings / Tune Icon
-                                const Icon(
-                                  Icons.tune_rounded,
-                                  size: 16,
-                                  color: Color(0xFF0288D1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // 3. History Trip / Stop Item Card 1 (Red Stop Badge)
-                        _buildHistoryTripCard(
-                          badgeLabel: 'Stop',
-                          badgeBgColor: const Color(0xFFFEE4E2),
-                          badgeTextColor: const Color(0xFFF04438),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // 4. History Trip / Stop Item Card 2 (Green Stop Badge)
-                        _buildHistoryTripCard(
-                          badgeLabel: 'Stop',
-                          badgeBgColor: const Color(0xFFD1FADF),
-                          badgeTextColor: const Color(0xFF12B76A),
-                        ),
-                      ],
-                    ),
+                      // Right History Details Sidebar
+                      Container(
+                        width: 340,
+                        color: const Color(0xFFF4F6F9),
+                        child: buildHistorySidebar(),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -466,10 +561,10 @@ class HistoryViewContent extends StatelessWidget {
       return InkWell(
         onTap: () => controller.selectTab(index),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Spacer(),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, size: 17, color: color),
                 const SizedBox(width: 6),
@@ -483,7 +578,7 @@ class HistoryViewContent extends StatelessWidget {
                 ),
               ],
             ),
-            const Spacer(),
+            const SizedBox(height: 6),
             // Blue underline indicator for selected tab
             Container(
               height: 2.5,
