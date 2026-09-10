@@ -1,3 +1,4 @@
+import 'package:airotrack_web/constants/app_assets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
@@ -33,190 +34,267 @@ class HistoryViewContent extends StatelessWidget {
     ];
 
     Widget buildMapStack() {
-      return Stack(
-        children: [
-          // OpenStreetMap Canvas
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: const LatLng(10.038, 76.325),
-              initialZoom: 13.5,
-              onTap: (tapPosition, point) {
-                controller.toggleHistoryMapDialog();
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.airotrack.app',
-              ),
-              // Route Black Polyline
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: routePoints,
-                    color: Colors.black,
-                    strokeWidth: 3.5,
-                  ),
-                ],
-              ),
-              // Numbered Route Nodes (1, 2, 3)
-              MarkerLayer(
-                markers: [
-                  _buildNodeMarker(nodePoints[0], '1', controller),
-                  _buildNodeMarker(nodePoints[1], '2', controller),
-                  _buildNodeMarker(nodePoints[2], '3', controller),
-                ],
-              ),
-            ],
-          ),
+      return Obx(() {
+        final detail = controller.vehicleDetail.value;
+        final lat = detail.latitude ?? 10.038;
+        final lng = detail.longitude ?? 76.325;
+        final mapCenter = LatLng(lat, lng);
 
-          // Route Node Info Popup Dialog (Matching Reference Screenshot 2)
-          Obx(() {
-            if (!controller.isHistoryMapDialogVisible.value) {
-              return const SizedBox.shrink();
+        final dynamicRoutePoints = <LatLng>[];
+        if (controller.historyPoints.isNotEmpty) {
+          for (final pt in controller.historyPoints) {
+            final pLat = double.tryParse(
+              pt['latitude']?.toString() ?? pt['lat']?.toString() ?? '',
+            );
+            final pLng = double.tryParse(
+              pt['longitude']?.toString() ?? pt['lng']?.toString() ?? '',
+            );
+            if (pLat != null && pLng != null) {
+              dynamicRoutePoints.add(LatLng(pLat, pLng));
             }
+          }
+        }
 
-            return Positioned(
-              left: isMobile ? 20 : 180,
-              bottom: isMobile ? 80 : 140,
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  width: isMobile ? 280 : 310,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1F000000),
-                        blurRadius: 16,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Close 'X' button
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: InkWell(
-                          onTap: controller.hideHistoryMapDialog,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF2F4F7),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              size: 14,
-                              color: Color(0xFF344054),
-                            ),
-                          ),
+        final activeRoute = dynamicRoutePoints.isNotEmpty
+            ? dynamicRoutePoints
+            : routePoints;
+        final vehiclePos = activeRoute.first;
+        final flagPos = activeRoute.last;
+
+        return Stack(
+          children: [
+            // OpenStreetMap Canvas
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: mapCenter,
+                initialZoom: 13.5,
+                onTap: (tapPosition, point) {
+                  controller.toggleHistoryMapDialog();
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.airotrack.app',
+                ),
+                // Dynamic Route Polyline
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: activeRoute,
+                      color: Colors.black,
+                      strokeWidth: 3.5,
+                    ),
+                  ],
+                ),
+                // Dynamic Vehicle & Location Flag PNG Markers
+                MarkerLayer(
+                  markers: [
+                    // Vehicle Marker
+                    Marker(
+                      point: vehiclePos,
+                      width: 40,
+                      height: 40,
+                      child: GestureDetector(
+                        onTap: controller.toggleHistoryMapDialog,
+                        child: Image.asset(
+                          AppAssets.greenCar,
+                          fit: BoxFit.contain,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                    ),
+                    // Location Flag Marker
+                    Marker(
+                      point: flagPos,
+                      width: 22,
+                      height: 22,
+                      child: GestureDetector(
+                        onTap: controller.toggleHistoryMapDialog,
+                        child: Image.asset(AppAssets.flag, fit: BoxFit.contain),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
 
-                      _buildDialogRow('Arrival Time:', '08 Oct 2025 11:00 AM'),
-                      const SizedBox(height: 5),
-                      _buildDialogRow(
-                        'Departure Time:',
-                        '08 Oct 2025 12:30 PM',
-                      ),
-                      const SizedBox(height: 5),
-                      _buildDialogRow('Duration:', '01h 30m'),
-                      const SizedBox(height: 5),
-                      _buildDialogRow(
-                        'Address:',
-                        'Puthiyakavu Junction,Karunagappalli, Kerala 690539, India',
-                      ),
-                    ],
+            // Route Node Info Popup Dialog displaying dynamic data
+            if (controller.isHistoryMapDialogVisible.value)
+              Positioned(
+                left: isMobile ? 20 : 180,
+                bottom: isMobile ? 80 : 140,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: isMobile ? 280 : 310,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1F000000),
+                          blurRadius: 16,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header with Vehicle Plate & Close Button
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              detail.vehicleNumber,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1D2939),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: controller.hideHistoryMapDialog,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF2F4F7),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  size: 14,
+                                  color: Color(0xFF344054),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+
+                        _buildDialogRow(
+                          'Device Time:',
+                          detail.deviceTime.isNotEmpty
+                              ? detail.deviceTime
+                              : 'N/A',
+                        ),
+                        const SizedBox(height: 5),
+                        _buildDialogRow(
+                          'Server Time:',
+                          detail.serverTime.isNotEmpty
+                              ? detail.serverTime
+                              : 'N/A',
+                        ),
+                        const SizedBox(height: 5),
+                        _buildDialogRow(
+                          'Duration:',
+                          detail.runningDuration.isNotEmpty
+                              ? detail.runningDuration
+                              : '00h 00m',
+                        ),
+                        const SizedBox(height: 5),
+                        _buildDialogRow(
+                          'Address:',
+                          detail.address.isNotEmpty
+                              ? detail.address
+                              : 'Fetching location...',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            );
-          }),
 
-          // Right Floating Action Map Toolbar
-          Positioned(
-            top: 16,
-            right: 16,
-            child: Column(
-              children: const [
-                _HistoryMapIconButton(icon: Icons.map_outlined),
-                _HistoryMapIconButton(icon: Icons.location_on_outlined),
-                _HistoryMapIconButton(text: 'P', color: Color(0xFF00A859)),
-                _HistoryMapIconButton(icon: Icons.my_location_rounded),
-              ],
+            // Right Floating Action Map Toolbar
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Column(
+                children: const [
+                  _HistoryMapIconButton(icon: Icons.map_outlined),
+                  _HistoryMapIconButton(icon: Icons.location_on_outlined),
+                  _HistoryMapIconButton(text: 'P', color: Color(0xFF00A859)),
+                  _HistoryMapIconButton(icon: Icons.my_location_rounded),
+                ],
+              ),
             ),
-          ),
 
-          // Zoom Buttons
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: Column(
-              children: const [
-                _HistoryMapIconButton(icon: Icons.add_rounded),
-                _HistoryMapIconButton(icon: Icons.remove_rounded),
-              ],
+            // Zoom Buttons
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: Column(
+                children: const [
+                  _HistoryMapIconButton(icon: Icons.add_rounded),
+                  _HistoryMapIconButton(icon: Icons.remove_rounded),
+                ],
+              ),
             ),
-          ),
-        ],
-      );
+          ],
+        );
+      });
     }
 
     Widget buildHistorySidebar() {
-      return SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Top 3 Metric Cards Row (0 Kmph, 00:00:00, 12.5 Km)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildMetricCard(
-                    icon: Icons.dashboard_outlined,
-                    value: '0',
-                    unit: 'Kmph',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildMetricCard(
-                    icon: Icons.access_time_rounded,
-                    value: '00:00:00',
-                    unit: '',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildMetricCard(
-                    icon: Icons.speed_rounded,
-                    value: '12.5',
-                    unit: 'Km',
-                  ),
-                ),
-              ],
-            ),
+      return Obx(() {
+        final detail = controller.vehicleDetail.value;
+        final historyList = controller.historyPoints;
 
-            const SizedBox(height: 12),
-
-            // 2. Playback Bar Card (Play, Slider, 1x, Replay, Tune)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. Top 3 Metric Cards Row (Dynamic speed, duration, distance)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMetricCard(
+                      icon: Icons.dashboard_outlined,
+                      value: detail.speedKmph.toString(),
+                      unit: 'Kmph',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildMetricCard(
+                      icon: Icons.access_time_rounded,
+                      value: detail.runningDuration.isNotEmpty
+                          ? detail.runningDuration
+                          : '00:00:00',
+                      unit: '',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildMetricCard(
+                      icon: Icons.speed_rounded,
+                      value: detail.distanceKm.isNotEmpty
+                          ? detail.distanceKm
+                          : '0.0 Km',
+                      unit: '',
+                    ),
+                  ),
+                ],
               ),
-              child: Obx(
-                () => Row(
+
+              const SizedBox(height: 12),
+
+              // 2. Playback Bar Card (Play, Slider, 1x, Replay, Tune)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                ),
+                child: Row(
                   children: [
                     // Play / Pause circular button
                     InkWell(
@@ -305,243 +383,300 @@ class HistoryViewContent extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // 3. History Trip / Stop Item Card 1 (Red Stop Badge)
-            _buildHistoryTripCard(
-              badgeLabel: 'Stop',
-              badgeBgColor: const Color(0xFFFEE4E2),
-              badgeTextColor: const Color(0xFFF04438),
-            ),
+              // 3. Dynamic History Trip / Stop Item Cards
+              if (historyList.isNotEmpty)
+                ...historyList.take(5).map((pt) {
+                  final timeStr =
+                      pt['device_time']?.toString() ??
+                      pt['created_at']?.toString() ??
+                      detail.deviceTime;
+                  final speedStr =
+                      pt['speed']?.toString() ?? detail.speedKmph.toString();
+                  final distStr =
+                      pt['distance']?.toString() ?? detail.distanceKm;
 
-            const SizedBox(height: 12),
-
-            // 4. History Trip / Stop Item Card 2 (Green Stop Badge)
-            _buildHistoryTripCard(
-              badgeLabel: 'Stop',
-              badgeBgColor: const Color(0xFFD1FADF),
-              badgeTextColor: const Color(0xFF12B76A),
-            ),
-          ],
-        ),
-      );
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildHistoryTripCard(
+                      badgeLabel: 'Trip Point',
+                      badgeBgColor: const Color(0xFFD1FADF),
+                      badgeTextColor: const Color(0xFF12B76A),
+                      distance: distStr,
+                      maxSpeed: '$speedStr Kmph',
+                      startTime: timeStr,
+                      duration: detail.runningDuration.isNotEmpty
+                          ? detail.runningDuration
+                          : '00h 00m',
+                      endTime: timeStr,
+                    ),
+                  );
+                }).toList()
+              else ...[
+                _buildHistoryTripCard(
+                  badgeLabel: 'Stop',
+                  badgeBgColor: const Color(0xFFFEE4E2),
+                  badgeTextColor: const Color(0xFFF04438),
+                  distance: detail.distanceKm.isNotEmpty
+                      ? detail.distanceKm
+                      : '0.00 Km',
+                  maxSpeed: '${detail.maxSpeedKmph} Kmph',
+                  startTime: detail.deviceTime.isNotEmpty
+                      ? detail.deviceTime
+                      : 'N/A',
+                  duration: detail.stoppedDuration.isNotEmpty
+                      ? detail.stoppedDuration
+                      : '00h 00m',
+                  endTime: detail.serverTime.isNotEmpty
+                      ? detail.serverTime
+                      : 'N/A',
+                ),
+                const SizedBox(height: 12),
+                _buildHistoryTripCard(
+                  badgeLabel: 'Moving',
+                  badgeBgColor: const Color(0xFFD1FADF),
+                  badgeTextColor: const Color(0xFF12B76A),
+                  distance: detail.distanceKm.isNotEmpty
+                      ? detail.distanceKm
+                      : '0.00 Km',
+                  maxSpeed: '${detail.speedKmph} Kmph',
+                  startTime: detail.deviceTime.isNotEmpty
+                      ? detail.deviceTime
+                      : 'N/A',
+                  duration: detail.runningDuration.isNotEmpty
+                      ? detail.runningDuration
+                      : '00h 00m',
+                  endTime: detail.serverTime.isNotEmpty
+                      ? detail.serverTime
+                      : 'N/A',
+                ),
+              ],
+            ],
+          ),
+        );
+      });
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: Column(
-        children: [
-          // 1. Top Navigation Header Bar
-          Container(
-            height: isMobile ? null : 52,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 1. Top Navigation Header Bar
+            Container(
+              height: isMobile ? null : 52,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFFEAECF0), width: 1),
+                ),
               ),
+              child: isMobile
+                  ? Column(
+                      children: [
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: () {
+                                if (Navigator.canPop(context)) {
+                                  Get.back();
+                                } else {
+                                  controller.selectTab(-1);
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: const Padding(
+                                padding: EdgeInsets.all(6),
+                                child: Icon(
+                                  Icons.arrow_back_rounded,
+                                  size: 20,
+                                  color: Color(0xFF1D2939),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildHeaderTab(
+                              'History',
+                              Icons.access_time_rounded,
+                              0,
+                              controller,
+                            ),
+                            const SizedBox(width: 24),
+                            _buildHeaderTab(
+                              'Alerts',
+                              Icons.notifications_none_rounded,
+                              1,
+                              controller,
+                            ),
+                            const SizedBox(width: 24),
+                            _buildHeaderTab(
+                              'Statistics',
+                              Icons.analytics_outlined,
+                              2,
+                              controller,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Obx(
+                                () => _buildDatePickerBox(
+                                  controller.startDateStr.value,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Obx(
+                                () => _buildDatePickerBox(
+                                  controller.endDateStr.value,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: const Color(0xFFD0D5DD),
+                                  width: 1,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.tune_rounded,
+                                size: 15,
+                                color: Color(0xFF344054),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        // Back Arrow Button
+                        InkWell(
+                          onTap: () {
+                            if (Navigator.canPop(context)) {
+                              Get.back();
+                            } else {
+                              controller.selectTab(-1);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: const Padding(
+                            padding: EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.arrow_back_rounded,
+                              size: 20,
+                              color: Color(0xFF1D2939),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        // Navigation Header Tabs
+                        _buildHeaderTab(
+                          'History',
+                          Icons.access_time_rounded,
+                          0,
+                          controller,
+                        ),
+                        const SizedBox(width: 24),
+                        _buildHeaderTab(
+                          'Alerts',
+                          Icons.notifications_none_rounded,
+                          1,
+                          controller,
+                        ),
+                        const SizedBox(width: 24),
+                        _buildHeaderTab(
+                          'Statistics',
+                          Icons.analytics_outlined,
+                          2,
+                          controller,
+                        ),
+
+                        const Spacer(),
+
+                        // Date Range Pickers
+                        Obx(
+                          () => _buildDatePickerBox(
+                            controller.startDateStr.value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Obx(
+                          () =>
+                              _buildDatePickerBox(controller.endDateStr.value),
+                        ),
+                        const SizedBox(width: 12),
+
+                        // Filter Sliders Icon Button
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: const Color(0xFFD0D5DD),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.tune_rounded,
+                            size: 15,
+                            color: Color(0xFF344054),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
-            child: isMobile
-                ? Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          InkWell(
-                            onTap: () {
-                              if (Navigator.canPop(context)) {
-                                Get.back();
-                              } else {
-                                controller.selectTab(-1);
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(20),
-                            child: const Padding(
-                              padding: EdgeInsets.all(6),
-                              child: Icon(
-                                Icons.arrow_back_rounded,
-                                size: 20,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildHeaderTab(
-                            'History',
-                            Icons.access_time_rounded,
-                            0,
-                            controller,
-                          ),
-                          const SizedBox(width: 12),
-                          _buildHeaderTab(
-                            'Alerts',
-                            Icons.notifications_none_rounded,
-                            1,
-                            controller,
-                          ),
-                          const SizedBox(width: 12),
-                          _buildHeaderTab(
-                            'Statistics',
-                            Icons.analytics_outlined,
-                            2,
-                            controller,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Obx(
-                              () => _buildDatePickerBox(
-                                controller.startDateStr.value,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Obx(
-                              () => _buildDatePickerBox(
-                                controller.endDateStr.value,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: const Color(0xFFD0D5DD),
-                                width: 1,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.tune_rounded,
-                              size: 15,
-                              color: Color(0xFF344054),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      // Back Arrow Button
-                      InkWell(
-                        onTap: () {
-                          if (Navigator.canPop(context)) {
-                            Get.back();
-                          } else {
-                            controller.selectTab(-1);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(6),
-                          child: Icon(
-                            Icons.arrow_back_rounded,
-                            size: 20,
-                            color: Color(0xFF1D2939),
+
+            // 2. Main Area (Left Map + Right History Sidebar)
+            Expanded(
+              child: isMobile
+                  ? Column(
+                      children: [
+                        // Top Map View
+                        SizedBox(height: 360, child: buildMapStack()),
+                        // Bottom History Details Sidebar
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            color: const Color(0xFFF4F6F9),
+                            child: buildHistorySidebar(),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Left Map Area
+                        Expanded(child: buildMapStack()),
 
-                      // Navigation Header Tabs
-                      _buildHeaderTab(
-                        'History',
-                        Icons.access_time_rounded,
-                        0,
-                        controller,
-                      ),
-                      const SizedBox(width: 24),
-                      _buildHeaderTab(
-                        'Alerts',
-                        Icons.notifications_none_rounded,
-                        1,
-                        controller,
-                      ),
-                      const SizedBox(width: 24),
-                      _buildHeaderTab(
-                        'Statistics',
-                        Icons.analytics_outlined,
-                        2,
-                        controller,
-                      ),
-
-                      const Spacer(),
-
-                      // Date Range Pickers
-                      Obx(
-                        () =>
-                            _buildDatePickerBox(controller.startDateStr.value),
-                      ),
-                      const SizedBox(width: 12),
-                      Obx(
-                        () => _buildDatePickerBox(controller.endDateStr.value),
-                      ),
-                      const SizedBox(width: 12),
-
-                      // Filter Sliders Icon Button
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: const Color(0xFFD0D5DD),
-                            width: 1,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.tune_rounded,
-                          size: 15,
-                          color: Color(0xFF344054),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-
-          // 2. Main Area (Left Map + Right History Sidebar)
-          Expanded(
-            child: isMobile
-                ? Column(
-                    children: [
-                      // Top Map View
-                      SizedBox(height: 360, child: buildMapStack()),
-                      // Bottom History Details Sidebar
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
+                        // Right History Details Sidebar
+                        Container(
+                          width: 340,
                           color: const Color(0xFFF4F6F9),
                           child: buildHistorySidebar(),
                         ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Left Map Area
-                      Expanded(child: buildMapStack()),
-
-                      // Right History Details Sidebar
-                      Container(
-                        width: 340,
-                        color: const Color(0xFFF4F6F9),
-                        child: buildHistorySidebar(),
-                      ),
-                    ],
-                  ),
-          ),
-        ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -728,6 +863,11 @@ class HistoryViewContent extends StatelessWidget {
     required String badgeLabel,
     required Color badgeBgColor,
     required Color badgeTextColor,
+    String distance = '00.00 Km',
+    String maxSpeed = '00.00 Km',
+    String startTime = '08 Oct 2025, 12:04:32 AM',
+    String duration = '09h 33m 13s',
+    String endTime = '08 Oct 2025, 11:01:30 PM',
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -773,9 +913,9 @@ class HistoryViewContent extends StatelessWidget {
                 style: TextStyle(fontSize: 10.5, color: Color(0xFF667085)),
               ),
               const SizedBox(width: 6),
-              const Text(
-                '00.00 Km',
-                style: TextStyle(
+              Text(
+                distance,
+                style: const TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1D2939),
@@ -793,9 +933,9 @@ class HistoryViewContent extends StatelessWidget {
                 style: TextStyle(fontSize: 10.5, color: Color(0xFF667085)),
               ),
               const SizedBox(width: 6),
-              const Text(
-                '00.00 Km',
-                style: TextStyle(
+              Text(
+                maxSpeed,
+                style: const TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1D2939),
@@ -812,19 +952,19 @@ class HistoryViewContent extends StatelessWidget {
           _buildTimelineStep(
             icon: Icons.play_arrow_outlined,
             title: 'Start',
-            time: '08 Oct 2025, 12:04:32 AM',
+            time: startTime,
             showLineBelow: true,
           ),
           _buildTimelineStep(
             icon: Icons.access_time_rounded,
             title: 'Duration',
-            time: '09h 33m 13s',
+            time: duration,
             showLineBelow: true,
           ),
           _buildTimelineStep(
             icon: Icons.stop_rounded,
             title: 'End',
-            time: '08 Oct 2025, 11:01:30 PM',
+            time: endTime,
             showLineBelow: false,
           ),
         ],

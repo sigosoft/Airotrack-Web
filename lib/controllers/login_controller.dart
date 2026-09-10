@@ -1,5 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide FormData;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../config/api_config.dart';
+import '../config/dio_client.dart';
 import '../models/login_model.dart';
 import '../utils/app_toast.dart';
 import '../views/dashboard/dashboard_view.dart';
@@ -14,9 +19,12 @@ class LoginController extends GetxController {
   late TextEditingController phoneController;
   late TextEditingController passwordController;
 
-  // Reactive UI States
+  // Reactive UI & Validation States
   final RxBool isPasswordObscured = true.obs;
+  final RxBool isPasswordVisible = false.obs;
   final RxBool isLoading = false.obs;
+  final RxString phoneError = ''.obs;
+  final RxString passwordError = ''.obs;
 
   @override
   void onInit() {
@@ -26,12 +34,14 @@ class LoginController extends GetxController {
 
     // Listen to changes and update model
     phoneController.addListener(() {
+      if (phoneError.isNotEmpty) phoneError.value = '';
       loginModel.update((val) {
         val?.phoneNumber = phoneController.text.trim();
       });
     });
 
     passwordController.addListener(() {
+      if (passwordError.isNotEmpty) passwordError.value = '';
       loginModel.update((val) {
         val?.password = passwordController.text;
       });
@@ -40,31 +50,137 @@ class LoginController extends GetxController {
 
   @override
   void onClose() {
+    phoneController.dispose();
+    passwordController.dispose();
     super.onClose();
   }
 
   /// Toggle password visibility state
   void togglePasswordVisibility() {
     isPasswordObscured.value = !isPasswordObscured.value;
+    isPasswordVisible.value = !isPasswordObscured.value;
   }
 
-  /// Execute Sign In and navigate to DashboardView
+  // --- Validation Regex Helpers ---
+  static final _emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$');
+  bool _isValidEmail(String value) => _emailRegex.hasMatch(value);
+
+  bool _isValidPhone(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 10;
+  }
+
+  bool _isValidUsername(String value) {
+    return value.length >= 3;
+  }
+
+  /// Validate inputs before API request
+  bool validate() {
+    bool isValid = true;
+    final username = phoneController.text.trim();
+
+    if (username.isEmpty) {
+      phoneError.value = 'Phone number, email or username is required';
+      isValid = false;
+    } else if (username.contains('@')) {
+      if (!_isValidEmail(username)) {
+        phoneError.value = 'Please enter a valid email address';
+        isValid = false;
+      } else {
+        phoneError.value = '';
+      }
+    } else if (_isValidPhone(username)) {
+      phoneError.value = '';
+    } else if (_isValidUsername(username)) {
+      phoneError.value = '';
+    } else {
+      phoneError.value =
+          'Please enter a valid phone number (10+ digits), email or username (3+ characters)';
+      isValid = false;
+    }
+
+    if (passwordController.text.trim().isEmpty) {
+      passwordError.value = 'Password is required';
+      isValid = false;
+    } else if (passwordController.text.length < 6) {
+      passwordError.value = 'Password must be at least 6 characters';
+      isValid = false;
+    } else {
+      passwordError.value = '';
+    }
+
+    if (!isValid) {
+      if (phoneError.isNotEmpty) {
+        AppToast.show(phoneError.value, isError: true);
+      } else if (passwordError.isNotEmpty) {
+        AppToast.show(passwordError.value, isError: true);
+      }
+    }
+
+    return isValid;
+  }
+
+  /// Execute Sign In via Dio Client API request
   Future<void> signIn() async {
+    if (!validate()) return;
     isLoading.value = true;
 
     try {
-      // Simulate network authentication API request
-      await Future.delayed(const Duration(seconds: 1, milliseconds: 500));
+      final response = await DioClient().post(
+        ApiEndPoints.login,
+        body: {
+          'username': phoneController.text.trim(),
+          'password': passwordController.text.trim(),
+          'fcm': '',
+        },
+      );
 
-      AppToast.show('Signed in successfully!');
+      isLoading.value = false;
 
-      // Navigate to Dashboard View
-      Get.offAll(() => const DashboardView());
-    } catch (e) {
-      AppToast.show('Failed to sign in. Please try again.', isError: true);
-      if (!isClosed) {
-        isLoading.value = false;
+      if (response.data != null) {
+        String? token;
+        String? displayName;
+        final responseData = response.data;
+
+        if (responseData is Map) {
+          if (responseData['data'] != null && responseData['data'] is Map) {
+            final dataMap = responseData['data'] as Map;
+            if (dataMap['details'] != null && dataMap['details'] is Map) {
+              token = dataMap['details']['token']?.toString();
+              displayName = dataMap['details']['name']?.toString() ??
+                  dataMap['details']['username']?.toString() ??
+                  dataMap['details']['user_name']?.toString();
+            }
+            displayName ??= dataMap['name']?.toString() ??
+                dataMap['username']?.toString() ??
+                dataMap['user_name']?.toString();
+          }
+          token ??= responseData['token']?.toString();
+        }
+
+        if (token != null && token.isNotEmpty) {
+          DioClient().updateToken(token);
+          final prefs = await SharedPreferences.getInstance();
+          final savedName = (displayName != null && displayName.isNotEmpty)
+              ? displayName
+              : phoneController.text.trim();
+
+          await prefs.setBool('isLoggedIn', true);
+          await prefs.setString('username', savedName);
+          await prefs.setString('user_phone', phoneController.text.trim());
+
+          AppToast.show('Signed in successfully!');
+          Get.offAll(() => const DashboardView());
+        } else {
+          final msg = (responseData is Map && responseData['message'] != null)
+              ? responseData['message'].toString()
+              : 'Failed to login. Please check your credentials.';
+          AppToast.show(msg, isError: true);
+        }
       }
+    } catch (e) {
+      isLoading.value = false;
+      AppToast.showErrorMessage(e);
     }
   }
 

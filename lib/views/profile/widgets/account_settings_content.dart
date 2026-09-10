@@ -47,58 +47,62 @@ class AccountSettingsContent extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Column(
-                children: [
-                  // Center Profile Photo Avatar with Camera Badge
-                  Center(
-                    child: Stack(
-                      children: [
-                        const CircleAvatar(
-                          radius: 45,
-                          backgroundColor: Color(0xFFE0E0E0),
-                          child: Icon(
-                            Icons.person,
-                            color: Color(0xFF9E9E9E),
-                            size: 56,
-                          ),
-                        ),
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF00A3E0),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt_rounded,
-                              color: Colors.white,
-                              size: 16,
+              child: Obx(() {
+                final user = controller.profileData.value.user;
+
+                return Column(
+                  children: [
+                    // Center Profile Photo Avatar with Camera Badge
+                    Center(
+                      child: Stack(
+                        children: [
+                          const CircleAvatar(
+                            radius: 45,
+                            backgroundColor: Color(0xFFE0E0E0),
+                            child: Icon(
+                              Icons.person,
+                              color: Color(0xFF9E9E9E),
+                              size: 56,
                             ),
                           ),
-                        ),
-                      ],
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF00A3E0),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt_rounded,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-                  // Name Field + Edit Button
-                  _buildEditableField(
-                    label: 'Name',
-                    initialValue: controller.profileData.value.user.name,
-                    onEditTap: () {},
-                  ),
-                  const SizedBox(height: 16),
+                    // Name Field + Edit Button
+                    _buildEditableField(
+                      label: 'Name',
+                      initialValue: user.name,
+                      onEditTap: () {},
+                    ),
+                    const SizedBox(height: 16),
 
-                  // Phone Number Field + Edit Button
-                  _buildEditableField(
-                    label: 'Phone Number',
-                    initialValue: controller.profileData.value.user.phoneNumber,
-                    onEditTap: () {},
-                  ),
-                ],
-              ),
+                    // Phone Number Field + Edit Button
+                    _buildEditableField(
+                      label: 'Phone Number',
+                      initialValue: user.phoneNumber,
+                      onEditTap: () {},
+                    ),
+                  ],
+                );
+              }),
             ),
             const SizedBox(height: 28),
 

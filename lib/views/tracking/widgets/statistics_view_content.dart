@@ -70,7 +70,9 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 1. Top Navigation Header Bar
@@ -112,14 +114,14 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
                             0,
                             controller,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           _buildHeaderTab(
                             'Alerts',
                             Icons.notifications_none_rounded,
                             1,
                             controller,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           _buildHeaderTab(
                             'Statistics',
                             Icons.analytics_outlined,
@@ -318,8 +320,9 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStatCard({
     required String title,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
+import '../../../controllers/home_controller.dart';
+import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../models/tracking_model.dart';
 import '../vehicle_detail_map_view.dart';
 
@@ -340,7 +342,27 @@ class TrackingCard extends StatelessWidget {
                     InkWell(
                       onTap:
                           onArrowTap ??
-                          () => Get.to(() => const VehicleDetailMapView()),
+                          () {
+                            if (Get.isRegistered<HomeController>()) {
+                              final homeCtrl = Get.find<HomeController>();
+                              final match = homeCtrl.vehicles.firstWhereOrNull(
+                                (v) => v.plateNumber == data.registrationNumber,
+                              );
+                              if (match != null) {
+                                if (Get.isRegistered<
+                                  VehicleDetailController
+                                >()) {
+                                  Get.find<VehicleDetailController>()
+                                      .updateFromVehicle(match);
+                                } else {
+                                  Get.put(
+                                    VehicleDetailController(),
+                                  ).updateFromVehicle(match);
+                                }
+                              }
+                            }
+                            Get.to(() => const VehicleDetailMapView());
+                          },
                       child: Container(
                         width: 36,
                         height: 32,

@@ -17,6 +17,8 @@ class VehicleDetailData {
   final String distanceKm;
   final int speedKmph;
   final String coordinates;
+  final double? latitude;
+  final double? longitude;
   final String address;
   final String deviceTime;
   final String serverTime;
@@ -39,6 +41,8 @@ class VehicleDetailData {
     required this.distanceKm,
     required this.speedKmph,
     required this.coordinates,
+    this.latitude,
+    this.longitude,
     required this.address,
     required this.deviceTime,
     required this.serverTime,

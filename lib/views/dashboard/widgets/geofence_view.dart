@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../controllers/geofence_controller.dart';
+import '../../../models/geofence_model.dart';
 
 class GeofenceView extends StatefulWidget {
   const GeofenceView({super.key});
@@ -11,37 +14,34 @@ class GeofenceView extends StatefulWidget {
 
 class _GeofenceViewState extends State<GeofenceView> {
   int _selectedPage = 1;
+  final TextEditingController _searchController = TextEditingController();
+  late final GeofenceController _geofenceController;
 
-  final List<Map<String, dynamic>> _geofenceList = [
-    {
-      'name': 'Vennakkad',
-      'type': 'Circle',
-      'address': 'Vennakkad,kerala',
-      'description':
-          'Lorem Ipsum is simply dummy text of the printing and typesetting industry',
-    },
-    {
-      'name': 'Kodakkad',
-      'type': 'Circle',
-      'address': 'Kodakkad,kerala',
-      'description':
-          'Lorem Ipsum is simply dummy text of the printing and typesetting industry',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _geofenceController = Get.put(GeofenceController());
+  }
 
-  void _showAddGeofenceDialog(BuildContext context) {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _showAddGeofenceDialog(BuildContext context, {GeofenceModel? geofence}) {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (context) => const AddGeofenceDialog(),
+      builder: (context) => AddGeofenceDialog(geofence: geofence),
     );
   }
 
-  void _showUpdateVehiclesDialog(BuildContext context) {
+  void _showUpdateVehiclesDialog(BuildContext context, int geofenceId) {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (context) => const UpdateVehiclesDialog(),
+      builder: (context) => UpdateVehiclesDialog(geofenceId: geofenceId),
     );
   }
 
@@ -57,30 +57,45 @@ class _GeofenceViewState extends State<GeofenceView> {
               final isNarrow = constraints.maxWidth < 768;
 
               Widget buildSearchBox({double? width}) {
-                return Container(
+                return SizedBox(
                   width: width,
                   height: 38,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F4F7),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: const [
-                      Text(
-                        'Search Geofence',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Color(0xFF98A2B3),
-                        ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (val) {
+                      _geofenceController.searchQuery.value = val;
+                    },
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF1D2939),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Search Geofence',
+                      hintStyle: const TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF98A2B3),
                       ),
-                      Spacer(),
-                      Icon(
+                      suffixIcon: const Icon(
                         Icons.search_rounded,
                         size: 18,
                         color: Color(0xFF667085),
                       ),
-                    ],
+                      filled: true,
+                      fillColor: const Color(0xFFF2F4F7),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: const BorderSide(color: Color(0xFF00A3E0), width: 1),
+                      ),
+                    ),
                   ),
                 );
               }
@@ -165,75 +180,33 @@ class _GeofenceViewState extends State<GeofenceView> {
                             width: 1,
                           ),
                         ),
-                        child: Column(
-                          children: [
-                            // Table Header
-                            Container(
-                              height: 48,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                              ),
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: Color(0xFFEAECF0),
-                                    width: 1,
+                        child: Obx(() {
+                          final items = _geofenceController.filteredGeofences;
+                          final isLoading = _geofenceController.isLoading.value;
+
+                          return Column(
+                            children: [
+                              // Table Header
+                              Container(
+                                height: 48,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: Color(0xFFEAECF0),
+                                      width: 1,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Row(
-                                children: const [
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      'Name',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1D2939),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      'Type',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1D2939),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 3,
-                                    child: Text(
-                                      'Address',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1D2939),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 4,
-                                    child: Text(
-                                      'Description',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1D2939),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Align(
-                                      alignment: Alignment.centerRight,
+                                child: Row(
+                                  children: const [
+                                    Expanded(
+                                      flex: 2,
                                       child: Text(
-                                        'Quick Actions',
+                                        'Name',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
@@ -241,23 +214,93 @@ class _GeofenceViewState extends State<GeofenceView> {
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Table Rows
-                            for (int i = 0; i < _geofenceList.length; i++) ...[
-                              _buildTableRow(_geofenceList[i]),
-                              if (i < _geofenceList.length - 1)
-                                const Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: Color(0xFFEAECF0),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        'Type',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 3,
+                                      child: Text(
+                                        'Address',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 4,
+                                      child: Text(
+                                        'Description',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D2939),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          'Quick Actions',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1D2939),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+
+                              // Table Rows Loading or Empty State
+                              if (isLoading && items.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(32),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFF00A3E0),
+                                    ),
+                                  ),
+                                )
+                              else if (items.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(32),
+                                  child: Center(
+                                    child: Text(
+                                      'No geofences found',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF667085),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                for (int i = 0; i < items.length; i++) ...[
+                                  _buildTableRow(items[i]),
+                                  if (i < items.length - 1)
+                                    const Divider(
+                                      height: 1,
+                                      thickness: 1,
+                                      color: Color(0xFFEAECF0),
+                                    ),
+                                ],
                             ],
-                          ],
-                        ),
+                          );
+                        }),
                       ),
                     ),
                   );
@@ -267,15 +310,19 @@ class _GeofenceViewState extends State<GeofenceView> {
           ),
 
           // 3. Bottom Pagination Footer
-          if ((_geofenceList.length / 10).ceil() > 1)
-            Padding(
+          Obx(() {
+            final items = _geofenceController.filteredGeofences;
+            final pageCount = (items.length / 10).ceil();
+            if (pageCount <= 1) return const SizedBox.shrink();
+
+            return Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    for (int i = 1; i <= (_geofenceList.length / 10).ceil(); i++) ...[
+                    for (int i = 1; i <= pageCount; i++) ...[
                       InkWell(
                         onTap: () {
                           setState(() {
@@ -307,14 +354,13 @@ class _GeofenceViewState extends State<GeofenceView> {
                       ),
                       const SizedBox(width: 12),
                     ],
-
                     const SizedBox(width: 8),
 
                     // NEXT Button
-                    if (_selectedPage < (_geofenceList.length / 10).ceil())
+                    if (_selectedPage < pageCount)
                       InkWell(
                         onTap: () {
-                          if (_selectedPage < (_geofenceList.length / 10).ceil()) {
+                          if (_selectedPage < pageCount) {
                             setState(() {
                               _selectedPage++;
                             });
@@ -333,13 +379,14 @@ class _GeofenceViewState extends State<GeofenceView> {
                   ],
                 ),
               ),
-            ),
+            );
+          }),
         ],
       ),
     );
   }
 
-  Widget _buildTableRow(Map<String, dynamic> item) {
+  Widget _buildTableRow(GeofenceModel item) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
@@ -348,7 +395,7 @@ class _GeofenceViewState extends State<GeofenceView> {
           Expanded(
             flex: 2,
             child: Text(
-              item['name'],
+              item.name,
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
@@ -357,7 +404,7 @@ class _GeofenceViewState extends State<GeofenceView> {
             ),
           ),
 
-          // Type Pill (Circle)
+          // Type Pill
           Expanded(
             flex: 2,
             child: Align(
@@ -374,14 +421,16 @@ class _GeofenceViewState extends State<GeofenceView> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.panorama_fish_eye_rounded,
+                    Icon(
+                      item.type.toLowerCase() == 'polygon'
+                          ? Icons.pentagon_outlined
+                          : Icons.panorama_fish_eye_rounded,
                       size: 13,
-                      color: Color(0xFF00A3E0),
+                      color: const Color(0xFF00A3E0),
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      item['type'],
+                      item.type,
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,
@@ -398,7 +447,7 @@ class _GeofenceViewState extends State<GeofenceView> {
           Expanded(
             flex: 3,
             child: Text(
-              item['address'],
+              item.address.isNotEmpty ? item.address : 'N/A',
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -411,7 +460,7 @@ class _GeofenceViewState extends State<GeofenceView> {
           Expanded(
             flex: 4,
             child: Text(
-              item['description'],
+              item.description.isNotEmpty ? item.description : 'No description',
               style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w500,
@@ -437,8 +486,12 @@ class _GeofenceViewState extends State<GeofenceView> {
                 ),
                 color: const Color(0xFF2B2E35),
                 onSelected: (value) {
-                  if (value == 'Update Vehicles') {
-                    _showUpdateVehiclesDialog(context);
+                  if (value == 'Edit Details') {
+                    _showAddGeofenceDialog(context, geofence: item);
+                  } else if (value == 'Update Vehicles') {
+                    _showUpdateVehiclesDialog(context, item.id);
+                  } else if (value == 'Delete') {
+                    _geofenceController.deleteGeofence(item.id);
                   }
                 },
                 icon: const Icon(
@@ -487,16 +540,22 @@ class _GeofenceViewState extends State<GeofenceView> {
 }
 
 class AddGeofenceDialog extends StatefulWidget {
-  const AddGeofenceDialog({super.key});
+  final GeofenceModel? geofence;
+  const AddGeofenceDialog({super.key, this.geofence});
 
   @override
   State<AddGeofenceDialog> createState() => _AddGeofenceDialogState();
 }
 
 class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
-  String _selectedShape = 'circle'; // 'circle', 'rectangle', 'polygon'
+  late String _selectedShape;
+  late TextEditingController _nameController;
+  late TextEditingController _addressController;
+  late TextEditingController _descriptionController;
+  late String _selectedEventType;
+  late String _selectedTolerance;
 
-  final LatLng _center = const LatLng(10.038, 76.325);
+  LatLng _center = const LatLng(10.038, 76.325);
 
   final List<LatLng> _rectanglePoints = const [
     LatLng(10.044, 76.315),
@@ -514,6 +573,68 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    final g = widget.geofence;
+    _selectedShape = g != null
+        ? (g.type.toLowerCase() == 'polygon' ? 'polygon' : 'circle')
+        : 'circle';
+    _nameController = TextEditingController(text: g?.name ?? '');
+    _addressController = TextEditingController(text: g?.address ?? '');
+    _descriptionController = TextEditingController(text: g?.description ?? '');
+    _selectedEventType = g?.eventType ?? 'both';
+    _selectedTolerance = g?.tolerance.toString() ?? '0';
+
+    if (g != null && g.latitude != null && g.longitude != null) {
+      _center = LatLng(g.latitude!, g.longitude!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _addressController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitForm() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    final controller = Get.find<GeofenceController>();
+    bool success;
+
+    if (widget.geofence != null) {
+      success = await controller.updateGeofence(
+        id: widget.geofence!.id,
+        name: name,
+        type: _selectedShape,
+        address: _addressController.text.trim(),
+        description: _descriptionController.text.trim(),
+        latitude: _center.latitude,
+        longitude: _center.longitude,
+        tolerance: int.tryParse(_selectedTolerance) ?? 0,
+        eventType: _selectedEventType,
+      );
+    } else {
+      success = await controller.addGeofence(
+        name: name,
+        type: _selectedShape,
+        address: _addressController.text.trim(),
+        description: _descriptionController.text.trim(),
+        latitude: _center.latitude,
+        longitude: _center.longitude,
+        tolerance: int.tryParse(_selectedTolerance) ?? 0,
+        eventType: _selectedEventType,
+      );
+    }
+
+    if (success && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -523,52 +644,19 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
     Widget buildMapSection({required bool isMobileLayout}) {
       return Column(
         children: [
-          // Map Header Bar with Title & Search Input
+          // Map Header Bar with Title
           Container(
             height: 54,
             padding: EdgeInsets.only(left: 16, right: isMobileLayout ? 48 : 16),
+            alignment: Alignment.centerLeft,
             color: Colors.white,
-            child: Row(
-              children: [
-                const Text(
-                  'Add Geofence',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1D2939),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF2F4F7),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: const [
-                        Expanded(
-                          child: Text(
-                            'Search for a Place',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF98A2B3),
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.search_rounded,
-                          size: 16,
-                          color: Color(0xFF667085),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              widget.geofence != null ? 'Edit Geofence' : 'Add Geofence',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1D2939),
+              ),
             ),
           ),
 
@@ -583,6 +671,11 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
                     options: MapOptions(
                       initialCenter: _center,
                       initialZoom: 13.5,
+                      onTap: (_, point) {
+                        setState(() {
+                          _center = point;
+                        });
+                      },
                     ),
                     children: [
                       TileLayer(
@@ -741,43 +834,53 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
             // Field 1: Fence Name
             _buildFormField(
               label: 'Fence Name',
-              child: _buildTextInputField('Enter Fence Name'),
+              child: _buildTextInputField('Enter Fence Name', controller: _nameController),
             ),
             const SizedBox(height: 12),
 
             // Field 2: Event Type
             _buildFormField(
               label: 'Event Type',
-              child: _buildDropdownField('Entry'),
+              child: _buildDropdownField(_selectedEventType, onChanged: (val) {
+                if (val != null) setState(() => _selectedEventType = val);
+              }, items: const ['both', 'entry', 'exit']),
             ),
             const SizedBox(height: 12),
 
             // Field 3: Address
             _buildFormField(
               label: 'Address',
-              child: _buildTextInputField('Enter your address'),
+              child: _buildTextInputField('Enter your address', controller: _addressController),
             ),
             const SizedBox(height: 12),
 
             // Field 4: Description (Multiline)
             _buildFormField(
               label: 'Description',
-              child: Container(
+              child: SizedBox(
                 height: 70,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFAFAFA),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFEAECF0), width: 1),
-                ),
-                child: const Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    'Give a short description',
-                    style: TextStyle(fontSize: 11.5, color: Color(0xFFB0B7C3)),
+                child: TextField(
+                  controller: _descriptionController,
+                  maxLines: 3,
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF1D2939)),
+                  decoration: InputDecoration(
+                    hintText: 'Give a short description',
+                    hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFFB0B7C3)),
+                    filled: true,
+                    fillColor: const Color(0xFFFAFAFA),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFEAECF0), width: 1),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFEAECF0), width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF00A3E0), width: 1),
+                    ),
                   ),
                 ),
               ),
@@ -787,7 +890,9 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
             // Field 5: Tolerance
             _buildFormField(
               label: 'Tolerance',
-              child: _buildDropdownField('5'),
+              child: _buildDropdownField(_selectedTolerance, onChanged: (val) {
+                if (val != null) setState(() => _selectedTolerance = val);
+              }, items: const ['0', '5', '10', '15', '20']),
             ),
             const SizedBox(height: 16),
 
@@ -825,9 +930,7 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: InkWell(
-                    onTap: () {
-                      Navigator.of(context).pop();
-                    },
+                    onTap: _submitForm,
                     child: Container(
                       height: 38,
                       decoration: BoxDecoration(
@@ -995,7 +1098,8 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
     );
   }
 
-  Widget _buildDropdownField(String valueStr) {
+  Widget _buildDropdownField(String valueStr, {void Function(String?)? onChanged, List<String>? items}) {
+    final list = items ?? [valueStr];
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1004,37 +1108,54 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFEAECF0), width: 1),
       ),
-      child: Row(
-        children: [
-          Text(
-            valueStr,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF344054)),
-          ),
-          const Spacer(),
-          const Icon(
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: list.contains(valueStr) ? valueStr : list.first,
+          isExpanded: true,
+          icon: const Icon(
             Icons.keyboard_arrow_down_rounded,
             size: 18,
             color: Color(0xFF98A2B3),
           ),
-        ],
+          onChanged: onChanged,
+          items: list.map((val) {
+            return DropdownMenuItem<String>(
+              value: val,
+              child: Text(
+                val,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF344054)),
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
 
-  Widget _buildTextInputField(String placeholder) {
-    return Container(
+  Widget _buildTextInputField(String placeholder, {TextEditingController? controller}) {
+    return SizedBox(
       height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFAFAFA),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFEAECF0), width: 1),
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          placeholder,
-          style: const TextStyle(fontSize: 12, color: Color(0xFFB0B7C3)),
+      child: TextField(
+        controller: controller,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF1D2939)),
+        decoration: InputDecoration(
+          hintText: placeholder,
+          hintStyle: const TextStyle(fontSize: 12, color: Color(0xFFB0B7C3)),
+          filled: true,
+          fillColor: const Color(0xFFFAFAFA),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFEAECF0), width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFEAECF0), width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF00A3E0), width: 1),
+          ),
         ),
       ),
     );
@@ -1042,7 +1163,8 @@ class _AddGeofenceDialogState extends State<AddGeofenceDialog> {
 }
 
 class UpdateVehiclesDialog extends StatefulWidget {
-  const UpdateVehiclesDialog({super.key});
+  final int geofenceId;
+  const UpdateVehiclesDialog({super.key, required this.geofenceId});
 
   @override
   State<UpdateVehiclesDialog> createState() => _UpdateVehiclesDialogState();
@@ -1050,14 +1172,34 @@ class UpdateVehiclesDialog extends StatefulWidget {
 
 class _UpdateVehiclesDialogState extends State<UpdateVehiclesDialog> {
   bool _selectAll = false;
-  final Map<String, bool> _vehicleSelection = {
-    'KL 07 D 0518': true,
-    'KL 07 D 6788': false,
-    'KL 07 D 0510': false,
-    'KL 07 Y 6000': false,
-    'KL 07 D 9999': false,
-    'KL 07 D 3333': false,
-  };
+  late final GeofenceController _geofenceController;
+  final Set<int> _selectedVehicleIds = {};
+  String _vehicleSearchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _geofenceController = Get.find<GeofenceController>();
+    _geofenceController.fetchGeofenceVehicles(widget.geofenceId).then((_) {
+      if (mounted) {
+        setState(() {
+          for (final item in _geofenceController.syncedVehicles) {
+            _selectedVehicleIds.add(item.id);
+          }
+        });
+      }
+    });
+  }
+
+  Future<void> _submitSync() async {
+    final success = await _geofenceController.syncGeofenceVehicles(
+      widget.geofenceId,
+      _selectedVehicleIds.toList(),
+    );
+    if (success && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1081,206 +1223,263 @@ class _UpdateVehiclesDialogState extends State<UpdateVehiclesDialog> {
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header Title
-                const Text(
-                  'Update Vehicles',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1D2939),
-                  ),
-                ),
-                const SizedBox(height: 16),
+            child: Obx(() {
+              final allItems = [
+                ..._geofenceController.syncedVehicles,
+                ..._geofenceController.unsyncedVehicles,
+              ];
 
-                // Search Vehicles Bar
-                Container(
-                  height: 38,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F4F7),
-                    borderRadius: BorderRadius.circular(20),
+              final filteredItems = allItems.where((v) {
+                if (_vehicleSearchQuery.trim().isEmpty) return true;
+                final q = _vehicleSearchQuery.trim().toLowerCase();
+                return v.vehicleNumber.toLowerCase().contains(q) || v.name.toLowerCase().contains(q);
+              }).toList();
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Title
+                  const Text(
+                    'Update Vehicles',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1D2939),
+                    ),
                   ),
-                  child: Row(
-                    children: const [
-                      Text(
-                        'Search Vehicles',
-                        style: TextStyle(
+                  const SizedBox(height: 16),
+
+                  // Search Vehicles Bar
+                  SizedBox(
+                    height: 38,
+                    child: TextField(
+                      onChanged: (val) {
+                        setState(() {
+                          _vehicleSearchQuery = val;
+                        });
+                      },
+                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF1D2939)),
+                      decoration: InputDecoration(
+                        hintText: 'Search Vehicles',
+                        hintStyle: const TextStyle(
                           fontSize: 12.5,
                           color: Color(0xFF98A2B3),
                         ),
+                        suffixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 18,
+                          color: Color(0xFF667085),
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFF2F4F7),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(color: Color(0xFF00A3E0), width: 1),
+                        ),
                       ),
-                      Spacer(),
-                      Icon(
-                        Icons.search_rounded,
-                        size: 18,
-                        color: Color(0xFF667085),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
+                  const SizedBox(height: 14),
 
-                // Select All Row
-                InkWell(
-                  onTap: () {
-                    setState(() {
-                      _selectAll = !_selectAll;
-                      _vehicleSelection.updateAll((key, value) => _selectAll);
-                    });
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: _selectAll
-                              ? const Color(0xFF00A3E0)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(3),
-                          border: Border.all(
+                  // Select All Row
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectAll = !_selectAll;
+                        if (_selectAll) {
+                          for (final item in filteredItems) {
+                            _selectedVehicleIds.add(item.id);
+                          }
+                        } else {
+                          _selectedVehicleIds.clear();
+                        }
+                      });
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
                             color: _selectAll
                                 ? const Color(0xFF00A3E0)
-                                : const Color(0xFFD0D5DD),
-                            width: 1.5,
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(3),
+                            border: Border.all(
+                              color: _selectAll
+                                  ? const Color(0xFF00A3E0)
+                                  : const Color(0xFFD0D5DD),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: _selectAll
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  size: 12,
+                                  color: Colors.white,
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Select All',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D2939),
                           ),
                         ),
-                        child: _selectAll
-                            ? const Icon(
-                                Icons.check_rounded,
-                                size: 12,
-                                color: Colors.white,
-                              )
-                            : null,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Vehicle Checkbox Items List
+                  if (_geofenceController.isVehicleLoading.value)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(
+                        child: CircularProgressIndicator(color: Color(0xFF00A3E0)),
                       ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Select All',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1D2939),
+                    )
+                  else if (filteredItems.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'No vehicles available',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: filteredItems.map((item) {
+                            final isChecked = _selectedVehicleIds.contains(item.id);
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    if (isChecked) {
+                                      _selectedVehicleIds.remove(item.id);
+                                    } else {
+                                      _selectedVehicleIds.add(item.id);
+                                    }
+                                  });
+                                },
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: BoxDecoration(
+                                        color: isChecked
+                                            ? const Color(0xFF00A3E0)
+                                            : const Color(0xFFD0D5DD),
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                      child: isChecked
+                                          ? const Icon(
+                                              Icons.check_rounded,
+                                              size: 13,
+                                              color: Colors.white,
+                                            )
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      item.vehicleNumber.isNotEmpty
+                                          ? item.vehicleNumber
+                                          : item.name,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1D2939),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+
+                  // Action Buttons Row (Cancel & Submit)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: Container(
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAFAFA),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFEAECF0),
+                                width: 1,
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1D2939),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: InkWell(
+                          onTap: _submitSync,
+                          child: Container(
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00A3E0),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Submit',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 14),
-
-                // Vehicle Checkbox Items List
-                Column(
-                  children: _vehicleSelection.keys.map((vehicle) {
-                    final isChecked = _vehicleSelection[vehicle] ?? false;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
-                        onTap: () {
-                          setState(() {
-                            _vehicleSelection[vehicle] = !isChecked;
-                          });
-                        },
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 18,
-                              height: 18,
-                              decoration: BoxDecoration(
-                                color: isChecked
-                                    ? const Color(0xFF00A3E0)
-                                    : const Color(0xFFD0D5DD),
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                              child: isChecked
-                                  ? const Icon(
-                                      Icons.check_rounded,
-                                      size: 13,
-                                      color: Colors.white,
-                                    )
-                                  : null,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              vehicle,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-
-                // Action Buttons Row (Cancel & Submit)
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: Container(
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFAFAFA),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: const Color(0xFFEAECF0),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'Cancel',
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D2939),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: Container(
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00A3E0),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'Submit',
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                ],
+              );
+            }),
           ),
 
           // Floating Close 'X' Button on Top-Right Corner

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../constants/app_assets.dart';
+import '../../../controllers/alerts_controller.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/custom_media_query.dart';
 
@@ -70,11 +71,14 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
   Widget build(BuildContext context) {
     final VehicleDetailController controller =
         Get.find<VehicleDetailController>();
+    final AlertsController alertsController = Get.put(AlertsController());
     final isMobile = CustomMediaQuery.isMobile(context);
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
         children: [
           // 1. Top Navigation Header Bar
           Container(
@@ -115,14 +119,14 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                             0,
                             controller,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           _buildHeaderTab(
                             'Alerts',
                             Icons.notifications_none_rounded,
                             1,
                             controller,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           _buildHeaderTab(
                             'Statistics',
                             Icons.analytics_outlined,
@@ -321,153 +325,187 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                               ),
                             ),
 
-                            // Table Data Rows List
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _alertsList.length,
-                              itemBuilder: (context, index) {
-                                final item = _alertsList[index];
-                                final isIgnitionOn =
-                                    item['isIgnitionOn'] as bool;
-
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 16,
+                            // Table Data Rows List (Dynamic from Alerts API)
+                            Obx(() {
+                              if (alertsController.isLoading.value &&
+                                  alertsController.alerts.isEmpty) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 40),
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
                                   ),
-                                  decoration: const BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: Color(0xFFEAECF0),
-                                        width: 1,
+                                );
+                              }
+
+                              final list = alertsController.alerts;
+                              if (list.isEmpty) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 40),
+                                  child: Center(
+                                    child: Text(
+                                      'No alerts found',
+                                      style: TextStyle(
+                                        color: Color(0xFF667085),
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      // Vehicle Column
-                                      Expanded(
-                                        flex: 2,
-                                        child: Row(
-                                          children: [
-                                            Image.asset(
-                                              AppAssets.carImage,
-                                              width: 18,
-                                              height: 18,
-                                              color: const Color(0xFF00A3E0),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              item['vehicle'],
-                                              style: const TextStyle(
-                                                fontSize: 12.5,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFF1D2939),
-                                              ),
-                                            ),
-                                          ],
+                                );
+                              }
+
+                              return ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: list.length,
+                                itemBuilder: (context, index) {
+                                  final item = list[index];
+                                  final isIgnitionOn = item.isIgnitionOn;
+                                  final statusText = item.type.isNotEmpty
+                                      ? item.type
+                                      : (isIgnitionOn
+                                          ? 'Ignition On'
+                                          : 'Ignition Off');
+
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 16,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Color(0xFFEAECF0),
+                                          width: 1,
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
-
-                                      // Date & Time Column
-                                      Expanded(
-                                        flex: 3,
-                                        child: Text(
-                                          item['dateTime'],
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: Color(0xFF344054),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        // Vehicle Column
+                                        Expanded(
+                                          flex: 2,
+                                          child: Row(
+                                            children: [
+                                              Image.asset(
+                                                AppAssets.carImage,
+                                                width: 18,
+                                                height: 18,
+                                                color: const Color(0xFF00A3E0),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                item.plateNumber.isNotEmpty
+                                                    ? item.plateNumber
+                                                    : item.deviceName,
+                                                style: const TextStyle(
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color(0xFF1D2939),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 16),
+                                        const SizedBox(width: 16),
 
-                                      // Location Column
-                                      Expanded(
-                                        flex: 5,
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Padding(
-                                              padding: EdgeInsets.only(top: 2),
-                                              child: Icon(
-                                                Icons.location_on_outlined,
-                                                size: 18,
-                                                color: Color(0xFFF04438),
-                                              ),
+                                        // Date & Time Column
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            item.date,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF344054),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                item['location'],
-                                                style: const TextStyle(
-                                                  fontSize: 11.5,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: Color(0xFF475467),
-                                                  height: 1.3,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+
+                                        // Location Column
+                                        Expanded(
+                                          flex: 5,
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              const Padding(
+                                                padding: EdgeInsets.only(top: 2),
+                                                child: Icon(
+                                                  Icons.location_on_outlined,
+                                                  size: 18,
+                                                  color: Color(0xFFF04438),
                                                 ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-
-                                      // Status Column
-                                      SizedBox(
-                                        width: 140,
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.end,
-                                          children: [
-                                            Icon(
-                                              Icons.power_settings_new_rounded,
-                                              size: 17,
-                                              color: isIgnitionOn
-                                                  ? const Color(0xFF12B76A)
-                                                  : const Color(0xFFF04438),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 4,
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  item.address.isNotEmpty
+                                                      ? item.address
+                                                      : 'Location unavailable',
+                                                  style: const TextStyle(
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: Color(0xFF475467),
+                                                    height: 1.3,
+                                                  ),
+                                                ),
                                               ),
-                                              decoration: BoxDecoration(
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+
+                                        // Status Column
+                                        SizedBox(
+                                          width: 140,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.end,
+                                            children: [
+                                              Icon(
+                                                Icons.power_settings_new_rounded,
+                                                size: 17,
                                                 color: isIgnitionOn
-                                                    ? const Color(0xFFD1FADF)
-                                                    : const Color(0xFFFEE4E2),
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
+                                                    ? const Color(0xFF12B76A)
+                                                    : const Color(0xFFF04438),
                                               ),
-                                              child: Text(
-                                                isIgnitionOn
-                                                    ? 'Ignition On'
-                                                    : 'Ignition Off',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
                                                   color: isIgnitionOn
-                                                      ? const Color(0xFF12B76A)
-                                                      : const Color(0xFFF04438),
+                                                      ? const Color(0xFFD1FADF)
+                                                      : const Color(0xFFFEE4E2),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  statusText,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: isIgnitionOn
+                                                        ? const Color(0xFF12B76A)
+                                                        : const Color(0xFFF04438),
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              );
+                            }),
                           ],
                         ),
                       ),
@@ -548,8 +586,9 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildHeaderTab(
     String title,

@@ -90,8 +90,35 @@ class NotificationView extends StatelessWidget {
 
                         // Notification Cards Stack
                         Obx(() {
+                          if (controller.isLoading.value) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 40),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF00A3E0),
+                                ),
+                              ),
+                            );
+                          }
+
                           final notifications =
                               controller.notificationData.value.notifications;
+
+                          if (notifications.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 40),
+                              child: Center(
+                                child: Text(
+                                  'No notifications found',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF667085),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
 
                           return Column(
                             children: notifications.map((item) {

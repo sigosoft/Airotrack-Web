@@ -59,13 +59,13 @@ class TrackingMapContainer extends StatelessWidget {
                             Icons.access_time_rounded,
                             0,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           _buildTopTabItem(
                             'Alerts',
                             Icons.notifications_none_rounded,
                             1,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           _buildTopTabItem(
                             'Statistics',
                             Icons.analytics_outlined,
@@ -102,70 +102,96 @@ class TrackingMapContainer extends StatelessWidget {
         Expanded(
           child: Stack(
             children: [
-              // OpenStreetMap Tile Canvas Layer
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: const LatLng(10.038, 76.325),
-                  initialZoom: 13.5,
-                  onTap: (tapPosition, point) {
-                    controller.toggleMapDialog();
-                  },
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.airotrack.app',
-                  ),
-                  // Vehicle Route Polyline (Clickable to show dialogue box)
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: routePoints,
-                        color: Colors.black,
-                        strokeWidth: 4.0,
-                      ),
-                    ],
-                  ),
-                  // Vehicle & Flag PNG Markers
-                  MarkerLayer(
-                    markers: [
-                      // Current Vehicle Marker (Green Car.png)
-                      Marker(
-                        point: currentVehiclePosition,
-                        width: 44,
-                        height: 44,
-                        child: GestureDetector(
-                          onTap: controller.toggleMapDialog,
-                          child: Image.asset(
-                            AppAssets.greenCar,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
-                      // Start Flag Marker (Flag.png)
-                      Marker(
-                        point: startFlagPosition,
-                        width: 34,
-                        height: 34,
-                        child: GestureDetector(
-                          onTap: controller.toggleMapDialog,
-                          child: Image.asset(
-                            AppAssets.flag,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              // Dynamic Map Canvas Layer
+              Obx(() {
+                final detail = controller.vehicleDetail.value;
+                final lat = detail.latitude ?? 10.038;
+                final lng = detail.longitude ?? 76.325;
+                final currentVehiclePosition = LatLng(lat, lng);
 
-              // Route Info Popup Dialogue Box matching reference screenshot
+                // Build dynamic route polylines if historyPoints exist
+                final routePoints = <LatLng>[];
+                if (controller.historyPoints.isNotEmpty) {
+                  for (final pt in controller.historyPoints) {
+                    final pLat = double.tryParse(pt['latitude']?.toString() ?? pt['lat']?.toString() ?? '');
+                    final pLng = double.tryParse(pt['longitude']?.toString() ?? pt['lng']?.toString() ?? '');
+                    if (pLat != null && pLng != null) {
+                      routePoints.add(LatLng(pLat, pLng));
+                    }
+                  }
+                }
+
+                final startFlagPosition = routePoints.isNotEmpty
+                    ? routePoints.last
+                    : LatLng(lat - 0.005, lng - 0.005);
+
+                return FlutterMap(
+                  options: MapOptions(
+                    initialCenter: currentVehiclePosition,
+                    initialZoom: 13.5,
+                    onTap: (tapPosition, point) {
+                      controller.toggleMapDialog();
+                    },
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.airotrack.app',
+                    ),
+                    // Dynamic Vehicle Route Polyline
+                    if (routePoints.isNotEmpty)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: routePoints,
+                            color: const Color(0xFF00A859),
+                            strokeWidth: 4.0,
+                          ),
+                        ],
+                      ),
+                    // Dynamic Vehicle & Flag PNG Markers
+                    MarkerLayer(
+                      markers: [
+                        // Current Vehicle Marker (Green Car.png)
+                        Marker(
+                          point: currentVehiclePosition,
+                          width: 44,
+                          height: 44,
+                          child: GestureDetector(
+                            onTap: controller.toggleMapDialog,
+                            child: Image.asset(
+                              AppAssets.greenCar,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                        // Start Flag Marker (Flag.png)
+                        Marker(
+                          point: startFlagPosition,
+                          width: 22,
+                          height: 22,
+                          child: GestureDetector(
+                            onTap: controller.toggleMapDialog,
+                            child: Image.asset(
+                              AppAssets.flag,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              }),
+
+              // Route Info Popup Dialogue Box displaying dynamic vehicle details
               Obx(() {
                 if (!controller.isMapDialogVisible.value) {
                   return const SizedBox.shrink();
                 }
+
+                final detail = controller.vehicleDetail.value;
 
                 return Positioned(
                   left: 180,
@@ -190,12 +216,19 @@ class TrackingMapContainer extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header with Close 'X' Button
+                          // Header with Vehicle Number & Close 'X' Button
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const SizedBox.shrink(),
+                              Text(
+                                detail.vehicleNumber,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1D2939),
+                                ),
+                              ),
                               InkWell(
                                 onTap: controller.hideMapDialog,
                                 borderRadius: BorderRadius.circular(12),
@@ -214,24 +247,27 @@ class TrackingMapContainer extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 8),
 
-                          // Table Info Rows
+                          // Table Dynamic Info Rows
                           _buildDialogRow(
-                            'Arrival Time:',
-                            '08 Oct 2025 11:00 AM',
+                            'Device Time:',
+                            detail.deviceTime.isNotEmpty ? detail.deviceTime : 'N/A',
                           ),
                           const SizedBox(height: 6),
                           _buildDialogRow(
-                            'Departure Time:',
-                            '08 Oct 2025 12:30 PM',
+                            'Server Time:',
+                            detail.serverTime.isNotEmpty ? detail.serverTime : 'N/A',
                           ),
                           const SizedBox(height: 6),
-                          _buildDialogRow('Duration:', '01h 30m'),
+                          _buildDialogRow(
+                            'Duration:',
+                            detail.runningDuration.isNotEmpty ? detail.runningDuration : '00h 00m',
+                          ),
                           const SizedBox(height: 6),
                           _buildDialogRow(
                             'Address:',
-                            'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
+                            detail.address.isNotEmpty ? detail.address : 'Location fetching...',
                           ),
                         ],
                       ),

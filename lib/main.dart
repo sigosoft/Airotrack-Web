@@ -15,13 +15,23 @@ import 'views/reminder/add_reminder_view.dart';
 import 'views/tracking/tracking_view.dart';
 import 'views/tracking/vehicle_detail_map_view.dart';
 
-void main() {
+import 'package:shared_preferences/shared_preferences.dart';
+import 'config/dio_client.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const AirotrackApp());
+  final prefs = await SharedPreferences.getInstance();
+  final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  final token = prefs.getString('token');
+  if (token != null && token.isNotEmpty) {
+    DioClient().updateToken(token);
+  }
+  runApp(AirotrackApp(isLoggedIn: isLoggedIn && token != null && token.isNotEmpty));
 }
 
 class AirotrackApp extends StatelessWidget {
-  const AirotrackApp({super.key});
+  final bool isLoggedIn;
+  const AirotrackApp({super.key, this.isLoggedIn = false});
 
   @override
   Widget build(BuildContext context) {
@@ -29,8 +39,8 @@ class AirotrackApp extends StatelessWidget {
       title: AppStrings.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: '/',
-      unknownRoute: GetPage(name: '/not-found', page: () => const LoginView()),
+      initialRoute: isLoggedIn ? '/dashboard' : '/',
+      unknownRoute: GetPage(name: '/not-found', page: () => isLoggedIn ? const DashboardView() : const LoginView()),
       getPages: [
         GetPage(name: '/', page: () => const LoginView()),
         GetPage(name: '/login', page: () => const LoginView()),
