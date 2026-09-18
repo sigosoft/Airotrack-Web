@@ -128,11 +128,11 @@ class LoginController extends GetxController {
     try {
       final response = await DioClient().post(
         ApiEndPoints.login,
-        body: {
+        body: FormData.fromMap({
           'username': phoneController.text.trim(),
           'password': passwordController.text.trim(),
           'fcm': '',
-        },
+        }),
       );
 
       isLoading.value = false;

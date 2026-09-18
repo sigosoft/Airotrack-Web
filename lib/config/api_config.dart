@@ -5,8 +5,7 @@ class ApiConfig {
   static String imageUrl =
       "https://ourworks.co.in/saimpex-backend/public/storage/";
 
-  static const String mapboxAccessToken =
-      'MAPBOX_ACCESS_TOKEN';
+  static const String mapboxAccessToken = 'MAPBOX_ACCESS_TOKEN';
 }
 
 class ApiEndPoints {
