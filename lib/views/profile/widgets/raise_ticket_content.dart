@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
+import '../../../controllers/home_controller.dart';
 import '../../../controllers/profile_controller.dart';
 import '../../../utils/custom_media_query.dart';
 
@@ -14,12 +15,14 @@ class RaiseTicketContent extends StatelessWidget {
     final ProfileController controller = Get.find<ProfileController>();
     final isMobile = CustomMediaQuery.isMobile(context);
 
-    final vehicleOptions = [
-      'KL 07 D 0518',
-      'KL 07 D 0519',
-      'KL 07 D 0520',
-      'KL 07 D 0521',
-    ];
+    final HomeController? homeController =
+        Get.isRegistered<HomeController>() ? Get.find<HomeController>() : null;
+    final vehicleOptions = homeController != null && homeController.vehicles.isNotEmpty
+        ? homeController.vehicles
+            .map((v) => v.plateNumber)
+            .where((p) => p.trim().isNotEmpty)
+            .toList()
+        : <String>[];
 
     final typeOptions = [
       'Technical Support',

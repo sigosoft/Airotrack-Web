@@ -13,36 +13,12 @@ class SummaryReportsView extends StatefulWidget {
 class _SummaryReportsViewState extends State<SummaryReportsView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _summaryReportsList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'distance': '2.65 Km',
-      'engineHour': '00:38:41h',
-      'running': '00:38:41h',
-      'stoped': '00:38:41h',
-      'idle': '00:38:41h',
-      'startLocation': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-      'endLocation': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-      'startOdo': '0535855KM',
-      'endOdo': '0535855KM',
-      'avgSpeed': '25.10 kmph',
-      'maxSpeed': '52.10 kmph',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'distance': '2.65 Km',
-      'engineHour': '00:38:41h',
-      'running': '00:38:41h',
-      'stoped': '00:38:41h',
-      'idle': '00:38:41h',
-      'startLocation': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-      'endLocation': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-      'startOdo': '0535855KM',
-      'endOdo': '0535855KM',
-      'avgSpeed': '25.10 kmph',
-      'maxSpeed': '52.10 kmph',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final DashboardController controller = Get.find<DashboardController>();
+    controller.fetchSummaryReports(page: _selectedPage);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,9 +78,8 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                       ),
                       const SizedBox(width: 8),
                       Obx(
-                        () => _buildDatePickerBox(
-                          controller.reportEndDate.value,
-                        ),
+                        () =>
+                            _buildDatePickerBox(controller.reportEndDate.value),
                       ),
                       const SizedBox(width: 8),
                       // Yellow Document Export Button with Blue Download Badge
@@ -203,106 +178,141 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // 2-Column Cards Grid
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final double maxWidth = constraints.maxWidth;
-                        int crossAxisCount = 2;
+                child: Obx(() {
+                  if (controller.isSummaryReportLoading.value) {
+                    return const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      ),
+                    );
+                  }
 
-                        if (maxWidth < 850) {
-                          crossAxisCount = 1;
-                        }
-
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _summaryReportsList.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            mainAxisExtent: maxWidth < 850 ? 205 : 180,
+                  if (controller.summaryReports.isEmpty) {
+                    return const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: Text(
+                          'No summary reports found',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF667085),
                           ),
-                          itemBuilder: (context, index) {
-                            final item = _summaryReportsList[index];
-                            return _buildSummaryCard(item);
-                          },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    );
+                  }
 
-                    const SizedBox(height: 24),
+                  final reportsList = controller.summaryReports;
+                  final totalPages = (reportsList.length / 10).ceil();
 
-                    // Bottom Pagination Row
-                    if ((_summaryReportsList.length / 10).ceil() > 1)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (int i = 1; i <= (_summaryReportsList.length / 10).ceil(); i++) ...[
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedPage = i;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _selectedPage == i
-                                        ? const Color(0xFF00A3E0)
-                                        : Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '$i',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                  return Column(
+                    children: [
+                      // 2-Column Cards Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double maxWidth = constraints.maxWidth;
+                          int crossAxisCount = 2;
+
+                          if (maxWidth < 850) {
+                            crossAxisCount = 1;
+                          }
+
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: reportsList.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                  mainAxisExtent: maxWidth < 850 ? 205 : 180,
+                                ),
+                            itemBuilder: (context, index) {
+                              final item = reportsList[index];
+                              return _buildSummaryCard(item);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Bottom Pagination Row
+                      if (totalPages > 1)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 1; i <= totalPages; i++) ...[
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPage = i;
+                                    });
+                                    controller.fetchSummaryReports(page: i);
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: _selectedPage == i
-                                          ? Colors.white
-                                          : const Color(0xFF344054),
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$i',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedPage == i
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
 
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // NEXT Button
-                            if (_selectedPage < (_summaryReportsList.length / 10).ceil())
-                              InkWell(
-                                onTap: () {
-                                  if (_selectedPage < (_summaryReportsList.length / 10).ceil()) {
-                                    setState(() {
-                                      _selectedPage++;
-                                    });
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              // NEXT Button
+                              if (_selectedPage < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (_selectedPage < totalPages) {
+                                      setState(() {
+                                        _selectedPage++;
+                                      });
+                                      controller.fetchSummaryReports(
+                                        page: _selectedPage,
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -333,15 +343,15 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
           // Section 1: Vehicle Number + Location Pin Distance Metric
           Row(
             children: [
-            Image.asset(
-              AppAssets.carImage,
-              width: 18,
-              height: 18,
-              color: const Color(0xFF00A3E0),
-            ),
+              Image.asset(
+                AppAssets.carImage,
+                width: 18,
+                height: 18,
+                color: const Color(0xFF00A3E0),
+              ),
               const SizedBox(width: 8),
               Text(
-                item['vehicle'],
+                item['vehicle']?.toString() ?? '',
                 style: const TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.bold,
@@ -349,14 +359,10 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                 ),
               ),
               const Spacer(),
-              const Icon(
-                Icons.location_on,
-                size: 14,
-                color: Color(0xFFF04438),
-              ),
+              const Icon(Icons.location_on, size: 14, color: Color(0xFFF04438)),
               const SizedBox(width: 4),
               Text(
-                item['distance'],
+                item['distance']?.toString() ?? '',
                 style: const TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.bold,
@@ -370,10 +376,26 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildMetricColumn('Engine Hour', item['engineHour'], const Color(0xFFE65100)),
-              _buildMetricColumn('Running', item['running'], const Color(0xFF12B76A)),
-              _buildMetricColumn('Stoped', item['stoped'], const Color(0xFFF04438)),
-              _buildMetricColumn('Idle', item['idle'], const Color(0xFFF57C00)),
+              _buildMetricColumn(
+                'Engine Hour',
+                item['engineHour']?.toString() ?? '',
+                const Color(0xFFE65100),
+              ),
+              _buildMetricColumn(
+                'Running',
+                item['running']?.toString() ?? '',
+                const Color(0xFF12B76A),
+              ),
+              _buildMetricColumn(
+                'Stoped',
+                item['stoped']?.toString() ?? '',
+                const Color(0xFFF04438),
+              ),
+              _buildMetricColumn(
+                'Idle',
+                item['idle']?.toString() ?? '',
+                const Color(0xFFF57C00),
+              ),
             ],
           ),
 
@@ -385,15 +407,11 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
               // Start Location
               Row(
                 children: [
-                  const Icon(
-                    Icons.circle,
-                    size: 9,
-                    color: Color(0xFF12B76A),
-                  ),
+                  const Icon(Icons.circle, size: 9, color: Color(0xFF12B76A)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      item['startLocation'],
+                      item['startLocation']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 10.5,
                         color: Color(0xFF475467),
@@ -427,7 +445,7 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        item['startOdo'],
+                        item['startOdo']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 8.5,
                           fontWeight: FontWeight.bold,
@@ -453,7 +471,7 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        item['endOdo'],
+                        item['endOdo']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 8.5,
                           fontWeight: FontWeight.bold,
@@ -468,15 +486,11 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
               // End Location
               Row(
                 children: [
-                  const Icon(
-                    Icons.circle,
-                    size: 9,
-                    color: Color(0xFFF04438),
-                  ),
+                  const Icon(Icons.circle, size: 9, color: Color(0xFFF04438)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      item['endLocation'],
+                      item['endLocation']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 10.5,
                         color: Color(0xFF475467),
@@ -500,11 +514,17 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                    border: Border.all(
+                      color: const Color(0xFFEAECF0),
+                      width: 1,
+                    ),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x0C000000),
@@ -529,7 +549,7 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                         ),
                       ),
                       Text(
-                        item['avgSpeed'],
+                        item['avgSpeed']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.bold,
@@ -541,11 +561,17 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                 ),
                 const SizedBox(width: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+                    border: Border.all(
+                      color: const Color(0xFFEAECF0),
+                      width: 1,
+                    ),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x0C000000),
@@ -570,7 +596,7 @@ class _SummaryReportsViewState extends State<SummaryReportsView> {
                         ),
                       ),
                       Text(
-                        item['maxSpeed'],
+                        item['maxSpeed']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.bold,

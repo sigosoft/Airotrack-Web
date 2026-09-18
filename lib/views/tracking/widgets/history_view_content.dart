@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:airotrack_web/constants/app_assets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -16,58 +17,44 @@ class HistoryViewContent extends StatelessWidget {
         Get.find<VehicleDetailController>();
     final isMobile = CustomMediaQuery.isMobile(context);
 
-    // Kalamassery / Kochi route points for History view matching reference screenshot
-    final routePoints = [
-      const LatLng(10.052, 76.325),
-      const LatLng(10.048, 76.322),
-      const LatLng(10.040, 76.315),
-      const LatLng(10.038, 76.318),
-      const LatLng(10.032, 76.312),
-      const LatLng(10.030, 76.328),
-      const LatLng(10.026, 76.335),
-    ];
-
-    final nodePoints = [
-      const LatLng(10.040, 76.324),
-      const LatLng(10.044, 76.316),
-      const LatLng(10.034, 76.310),
-    ];
+    // Auto-fetch history if not loaded yet
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (controller.historyPoints.isEmpty) {
+        controller.loadVehicleHistory();
+      }
+    });
 
     Widget buildMapStack() {
       return Obx(() {
         final detail = controller.vehicleDetail.value;
         final lat = detail.latitude ?? 10.038;
         final lng = detail.longitude ?? 76.325;
-        final mapCenter = LatLng(lat, lng);
 
-        final dynamicRoutePoints = <LatLng>[];
-        if (controller.historyPoints.isNotEmpty) {
-          for (final pt in controller.historyPoints) {
-            final pLat = double.tryParse(
-              pt['latitude']?.toString() ?? pt['lat']?.toString() ?? '',
-            );
-            final pLng = double.tryParse(
-              pt['longitude']?.toString() ?? pt['lng']?.toString() ?? '',
-            );
-            if (pLat != null && pLng != null) {
-              dynamicRoutePoints.add(LatLng(pLat, pLng));
-            }
-          }
-        }
-
-        final activeRoute = dynamicRoutePoints.isNotEmpty
-            ? dynamicRoutePoints
-            : routePoints;
-        final vehiclePos = activeRoute.first;
-        final flagPos = activeRoute.last;
+        final activeRoute = controller.getActiveRoutePoints();
+        final vehiclePos = controller.movingMarkerPosition.value ??
+            (activeRoute.isNotEmpty
+                ? activeRoute.first
+                : (lat != 0 && lng != 0
+                    ? LatLng(lat, lng)
+                    : const LatLng(10.038, 76.325)));
+        final flagPos = activeRoute.isNotEmpty ? activeRoute.last : null;
+        final mapCenter = activeRoute.isNotEmpty
+            ? activeRoute.first
+            : (lat != 0 && lng != 0
+                ? LatLng(lat, lng)
+                : const LatLng(10.038, 76.325));
 
         return Stack(
           children: [
             // OpenStreetMap Canvas
             FlutterMap(
+              mapController: controller.historyMapController,
               options: MapOptions(
                 initialCenter: mapCenter,
                 initialZoom: 13.5,
+                onMapReady: () {
+                  controller.fitHistoryRoute();
+                },
                 onTap: (tapPosition, point) {
                   controller.toggleHistoryMapDialog();
                 },
@@ -77,42 +64,58 @@ class HistoryViewContent extends StatelessWidget {
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.airotrack.app',
                 ),
-                // Dynamic Route Polyline
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: activeRoute,
-                      color: Colors.black,
-                      strokeWidth: 3.5,
-                    ),
-                  ],
-                ),
+                // Dynamic Route Polylines
+                if (activeRoute.isNotEmpty)
+                  PolylineLayer(
+                    polylines: [
+                      // Full planned journey guide line
+                      Polyline(
+                        points: activeRoute,
+                        color: const Color(0xFFD0D5DD),
+                        strokeWidth: 3.5,
+                      ),
+                      // Traveled path dynamically drawn behind vehicle as it moves
+                      if (controller.traveledRoutePoints.length >= 2)
+                        Polyline(
+                          points: controller.traveledRoutePoints,
+                          color: Colors.black,
+                          strokeWidth: 3.5,
+                        ),
+                    ],
+                  ),
                 // Dynamic Vehicle & Location Flag PNG Markers
                 MarkerLayer(
                   markers: [
-                    // Vehicle Marker
+                    // Vehicle Marker (Straight upright, moving forward)
                     Marker(
                       point: vehiclePos,
-                      width: 40,
-                      height: 40,
+                      width: 44,
+                      height: 44,
                       child: GestureDetector(
                         onTap: controller.toggleHistoryMapDialog,
-                        child: Image.asset(
-                          AppAssets.greenCar,
-                          fit: BoxFit.contain,
+                        child: Transform.flip(
+                          flipX: (controller.movingMarkerBearing.value ?? 90.0) >
+                                  180 &&
+                              (controller.movingMarkerBearing.value ?? 90.0) <
+                                  360,
+                          child: Image.asset(
+                            AppAssets.greenCar,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
                     // Location Flag Marker
-                    Marker(
-                      point: flagPos,
-                      width: 22,
-                      height: 22,
-                      child: GestureDetector(
-                        onTap: controller.toggleHistoryMapDialog,
-                        child: Image.asset(AppAssets.flag, fit: BoxFit.contain),
+                    if (flagPos != null)
+                      Marker(
+                        point: flagPos,
+                        width: 22,
+                        height: 22,
+                        child: GestureDetector(
+                          onTap: controller.toggleHistoryMapDialog,
+                          child: Image.asset(AppAssets.flag, fit: BoxFit.contain),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ],
@@ -212,11 +215,17 @@ class HistoryViewContent extends StatelessWidget {
               top: 16,
               right: 16,
               child: Column(
-                children: const [
-                  _HistoryMapIconButton(icon: Icons.map_outlined),
-                  _HistoryMapIconButton(icon: Icons.location_on_outlined),
-                  _HistoryMapIconButton(text: 'P', color: Color(0xFF00A859)),
-                  _HistoryMapIconButton(icon: Icons.my_location_rounded),
+                children: [
+                  const _HistoryMapIconButton(icon: Icons.map_outlined),
+                  const _HistoryMapIconButton(icon: Icons.location_on_outlined),
+                  const _HistoryMapIconButton(
+                    text: 'P',
+                    color: Color(0xFF00A859),
+                  ),
+                  _HistoryMapIconButton(
+                    icon: Icons.my_location_rounded,
+                    onTap: controller.fitHistoryRoute,
+                  ),
                 ],
               ),
             ),
@@ -226,9 +235,15 @@ class HistoryViewContent extends StatelessWidget {
               bottom: 16,
               right: 16,
               child: Column(
-                children: const [
-                  _HistoryMapIconButton(icon: Icons.add_rounded),
-                  _HistoryMapIconButton(icon: Icons.remove_rounded),
+                children: [
+                  _HistoryMapIconButton(
+                    icon: Icons.add_rounded,
+                    onTap: controller.zoomInHistoryMap,
+                  ),
+                  _HistoryMapIconButton(
+                    icon: Icons.remove_rounded,
+                    onTap: controller.zoomOutHistoryMap,
+                  ),
                 ],
               ),
             ),
@@ -336,9 +351,12 @@ class HistoryViewContent extends StatelessWidget {
                           ),
                         ),
                         child: Slider(
-                          value: controller.playbackProgress.value,
+                          value: controller.playbackProgress.value.clamp(
+                            0.0,
+                            1.0,
+                          ),
                           onChanged: (val) {
-                            controller.playbackProgress.value = val;
+                            controller.seekToProgress(val);
                           },
                         ),
                       ),
@@ -346,31 +364,37 @@ class HistoryViewContent extends StatelessWidget {
                     const SizedBox(width: 6),
 
                     // 1x Speed Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0288D1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        '1x',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                    GestureDetector(
+                      onTap: controller.cyclePlaybackSpeed,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0288D1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          controller.playbackSpeed.value,
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 6),
 
                     // Replay Icon
-                    const Icon(
-                      Icons.replay_rounded,
-                      size: 16,
-                      color: Color(0xFF0288D1),
+                    InkWell(
+                      onTap: controller.replay,
+                      child: const Icon(
+                        Icons.replay_rounded,
+                        size: 16,
+                        color: Color(0xFF0288D1),
+                      ),
                     ),
                     const SizedBox(width: 6),
 
@@ -414,45 +438,26 @@ class HistoryViewContent extends StatelessWidget {
                     ),
                   );
                 }).toList()
-              else ...[
-                _buildHistoryTripCard(
-                  badgeLabel: 'Stop',
-                  badgeBgColor: const Color(0xFFFEE4E2),
-                  badgeTextColor: const Color(0xFFF04438),
-                  distance: detail.distanceKm.isNotEmpty
-                      ? detail.distanceKm
-                      : '0.00 Km',
-                  maxSpeed: '${detail.maxSpeedKmph} Kmph',
-                  startTime: detail.deviceTime.isNotEmpty
-                      ? detail.deviceTime
-                      : 'N/A',
-                  duration: detail.stoppedDuration.isNotEmpty
-                      ? detail.stoppedDuration
-                      : '00h 00m',
-                  endTime: detail.serverTime.isNotEmpty
-                      ? detail.serverTime
-                      : 'N/A',
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFEAECF0)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No trip history recorded for selected date',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF667085),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 12),
-                _buildHistoryTripCard(
-                  badgeLabel: 'Moving',
-                  badgeBgColor: const Color(0xFFD1FADF),
-                  badgeTextColor: const Color(0xFF12B76A),
-                  distance: detail.distanceKm.isNotEmpty
-                      ? detail.distanceKm
-                      : '0.00 Km',
-                  maxSpeed: '${detail.speedKmph} Kmph',
-                  startTime: detail.deviceTime.isNotEmpty
-                      ? detail.deviceTime
-                      : 'N/A',
-                  duration: detail.runningDuration.isNotEmpty
-                      ? detail.runningDuration
-                      : '00h 00m',
-                  endTime: detail.serverTime.isNotEmpty
-                      ? detail.serverTime
-                      : 'N/A',
-                ),
-              ],
             ],
           ),
         );
@@ -500,25 +505,31 @@ class HistoryViewContent extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _buildHeaderTab(
-                              'History',
-                              Icons.access_time_rounded,
-                              0,
-                              controller,
-                            ),
-                            const SizedBox(width: 24),
-                            _buildHeaderTab(
-                              'Alerts',
-                              Icons.notifications_none_rounded,
-                              1,
-                              controller,
-                            ),
-                            const SizedBox(width: 24),
-                            _buildHeaderTab(
-                              'Statistics',
-                              Icons.analytics_outlined,
-                              2,
-                              controller,
+                            Expanded(
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _buildHeaderTab(
+                                    'History',
+                                    Icons.access_time_rounded,
+                                    0,
+                                    controller,
+                                  ),
+                                  _buildHeaderTab(
+                                    'Alerts',
+                                    Icons.notifications_none_rounded,
+                                    1,
+                                    controller,
+                                  ),
+                                  _buildHeaderTab(
+                                    'Statistics',
+                                    Icons.analytics_outlined,
+                                    2,
+                                    controller,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -528,7 +539,10 @@ class HistoryViewContent extends StatelessWidget {
                             Expanded(
                               child: Obx(
                                 () => _buildDatePickerBox(
+                                  context,
                                   controller.startDateStr.value,
+                                  true,
+                                  controller,
                                 ),
                               ),
                             ),
@@ -536,7 +550,10 @@ class HistoryViewContent extends StatelessWidget {
                             Expanded(
                               child: Obx(
                                 () => _buildDatePickerBox(
+                                  context,
                                   controller.endDateStr.value,
+                                  false,
+                                  controller,
                                 ),
                               ),
                             ),
@@ -612,13 +629,20 @@ class HistoryViewContent extends StatelessWidget {
                         // Date Range Pickers
                         Obx(
                           () => _buildDatePickerBox(
+                            context,
                             controller.startDateStr.value,
+                            true,
+                            controller,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Obx(
-                          () =>
-                              _buildDatePickerBox(controller.endDateStr.value),
+                          () => _buildDatePickerBox(
+                            context,
+                            controller.endDateStr.value,
+                            false,
+                            controller,
+                          ),
                         ),
                         const SizedBox(width: 12),
 
@@ -726,32 +750,60 @@ class HistoryViewContent extends StatelessWidget {
     });
   }
 
-  Widget _buildDatePickerBox(String dateStr) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.calendar_month_outlined,
-            size: 15,
-            color: Color(0xFF667085),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            dateStr,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF344054),
+  Widget _buildDatePickerBox(
+    BuildContext context,
+    String dateStr,
+    bool isStart,
+    VehicleDetailController controller,
+  ) {
+    return InkWell(
+      onTap: () async {
+        final now = DateTime.now();
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: now,
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+        );
+        if (picked != null) {
+          final day = picked.day.toString().padLeft(2, '0');
+          final month = picked.month.toString().padLeft(2, '0');
+          final year = picked.year.toString();
+          if (isStart) {
+            controller.startDateStr.value = '$day-$month-$year 12:00 AM';
+          } else {
+            controller.endDateStr.value = '$day-$month-$year 11:59 PM';
+          }
+          controller.loadVehicleHistory();
+        }
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.calendar_month_outlined,
+              size: 15,
+              color: Color(0xFF667085),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              dateStr,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF344054),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -863,11 +915,11 @@ class HistoryViewContent extends StatelessWidget {
     required String badgeLabel,
     required Color badgeBgColor,
     required Color badgeTextColor,
-    String distance = '00.00 Km',
-    String maxSpeed = '00.00 Km',
-    String startTime = '08 Oct 2025, 12:04:32 AM',
-    String duration = '09h 33m 13s',
-    String endTime = '08 Oct 2025, 11:01:30 PM',
+    String distance = '0.00 Km',
+    String maxSpeed = '0.00 Kmph',
+    String startTime = '-',
+    String duration = '-',
+    String endTime = '-',
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1028,38 +1080,43 @@ class _HistoryMapIconButton extends StatelessWidget {
   final IconData? icon;
   final String? text;
   final Color? color;
+  final VoidCallback? onTap;
 
-  const _HistoryMapIconButton({this.icon, this.text, this.color});
+  const _HistoryMapIconButton({this.icon, this.text, this.color, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 30,
-      height: 30,
-      margin: const EdgeInsets.only(bottom: 6),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFFEAECF0), width: 1),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0C000000),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 30,
+        height: 30,
+        margin: const EdgeInsets.only(bottom: 6),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFEAECF0), width: 1),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0C000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: text != null
+            ? Text(
+                text!,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: color ?? const Color(0xFF344054),
+                ),
+              )
+            : Icon(icon, size: 15, color: color ?? const Color(0xFF344054)),
       ),
-      child: text != null
-          ? Text(
-              text!,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: color ?? const Color(0xFF344054),
-              ),
-            )
-          : Icon(icon, size: 15, color: color ?? const Color(0xFF344054)),
     );
   }
 }

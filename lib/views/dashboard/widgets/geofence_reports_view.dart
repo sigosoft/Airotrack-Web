@@ -14,64 +14,12 @@ class GeofenceReportsView extends StatefulWidget {
 class _GeofenceReportsViewState extends State<GeofenceReportsView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _geofenceReportsList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Enter',
-      'isEnter': true,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Exit',
-      'isEnter': false,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Enter',
-      'isEnter': true,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Exit',
-      'isEnter': false,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Enter',
-      'isEnter': true,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Exit',
-      'isEnter': false,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Enter',
-      'isEnter': true,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'event': 'Geofence Exit',
-      'isEnter': false,
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final DashboardController controller = Get.find<DashboardController>();
+    controller.fetchGeofenceReports(page: _selectedPage);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +163,6 @@ class _GeofenceReportsViewState extends State<GeofenceReportsView> {
           ),
 
           // 2. Main Content Body (2-Column Cards Grid & Pagination)
-          // 2. Main Content Body (2-Column Cards Grid & Pagination)
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -233,106 +180,144 @@ class _GeofenceReportsViewState extends State<GeofenceReportsView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // 2-Column Cards Grid
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final double maxWidth = constraints.maxWidth;
-                        int crossAxisCount = 2;
+                child: Obx(() {
+                  if (controller.isGeofenceReportLoading.value) {
+                    return const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      ),
+                    );
+                  }
 
-                        if (maxWidth < 768) {
-                          crossAxisCount = 1;
-                        }
+                  final reportsList = controller.geofenceReports;
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _geofenceReportsList.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            mainAxisExtent: maxWidth < 768 ? 120 : 108,
+                  if (reportsList.isEmpty) {
+                    return const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: Text(
+                          'No geofence report available',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF667085),
                           ),
-                          itemBuilder: (context, index) {
-                            final item = _geofenceReportsList[index];
-                            return _buildGeofenceCard(item);
-                          },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    );
+                  }
 
-                    const SizedBox(height: 24),
+                  final totalPages = (reportsList.length / 10).ceil() < 1
+                      ? 1
+                      : (reportsList.length / 10).ceil();
 
-                    // Bottom Pagination Row
-                    if ((_geofenceReportsList.length / 10).ceil() > 1)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (int i = 1; i <= (_geofenceReportsList.length / 10).ceil(); i++) ...[
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedPage = i;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _selectedPage == i
-                                        ? const Color(0xFF00A3E0)
-                                        : Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '$i',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                  return Column(
+                    children: [
+                      // 2-Column Cards Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double maxWidth = constraints.maxWidth;
+                          int crossAxisCount = 2;
+
+                          if (maxWidth < 768) {
+                            crossAxisCount = 1;
+                          }
+
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: reportsList.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                              mainAxisExtent: maxWidth < 768 ? 120 : 108,
+                            ),
+                            itemBuilder: (context, index) {
+                              final item = reportsList[index];
+                              return _buildGeofenceCard(item);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Bottom Pagination Row
+                      if (totalPages > 1)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 1; i <= totalPages; i++) ...[
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPage = i;
+                                    });
+                                    controller.fetchGeofenceReports(page: i);
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: _selectedPage == i
-                                          ? Colors.white
-                                          : const Color(0xFF344054),
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$i',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedPage == i
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
 
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // NEXT Button
-                            if (_selectedPage < (_geofenceReportsList.length / 10).ceil())
-                              InkWell(
-                                onTap: () {
-                                  if (_selectedPage < (_geofenceReportsList.length / 10).ceil()) {
-                                    setState(() {
-                                      _selectedPage++;
-                                    });
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              // NEXT Button
+                              if (_selectedPage < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (_selectedPage < totalPages) {
+                                      setState(() {
+                                        _selectedPage++;
+                                      });
+                                      controller.fetchGeofenceReports(
+                                        page: _selectedPage,
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -379,7 +364,7 @@ class _GeofenceReportsViewState extends State<GeofenceReportsView> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      item['vehicle'],
+                      item['vehicle']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.bold,
@@ -397,7 +382,7 @@ class _GeofenceReportsViewState extends State<GeofenceReportsView> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          item['event'],
+                          item['event']?.toString() ?? '',
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -423,7 +408,7 @@ class _GeofenceReportsViewState extends State<GeofenceReportsView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        item['time'],
+                        item['time']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -450,7 +435,7 @@ class _GeofenceReportsViewState extends State<GeofenceReportsView> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        item['location'],
+                        item['location']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,

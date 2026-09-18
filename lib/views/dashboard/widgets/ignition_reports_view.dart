@@ -14,56 +14,12 @@ class IgnitionReportsView extends StatefulWidget {
 class _IgnitionReportsViewState extends State<IgnitionReportsView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _reportsList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': true,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': false,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': true,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': false,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': true,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': false,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': true,
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'timestamp': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'isIgnitionOn': false,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final DashboardController controller = Get.find<DashboardController>();
+    controller.fetchIgnitionReports(page: _selectedPage);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -224,112 +180,142 @@ class _IgnitionReportsViewState extends State<IgnitionReportsView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // 2-Column Cards Grid
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final double maxWidth = constraints.maxWidth;
-                        int crossAxisCount = 2;
+                child: Obx(() {
+                  if (controller.isIgnitionReportLoading.value) {
+                    return const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      ),
+                    );
+                  }
 
-                        if (maxWidth < 768) {
-                          crossAxisCount = 1;
-                        }
+                  final reportsList = controller.ignitionReports;
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _reportsList.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
-                                mainAxisExtent: 108,
-                              ),
-                          itemBuilder: (context, index) {
-                            final item = _reportsList[index];
-                            return _buildReportCard(item);
-                          },
-                        );
-                      },
-                    ),
+                  if (reportsList.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(
+                        child: Text(
+                          'No ignition reports available',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: Color(0xFF667085),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
-                    const SizedBox(height: 24),
+                  final totalPages = (reportsList.length / 10).ceil();
 
-                    // Bottom Pagination Row
-                    if ((_reportsList.length / 10).ceil() > 1)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (
-                              int i = 1;
-                              i <= (_reportsList.length / 10).ceil();
-                              i++
-                            ) ...[
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedPage = i;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _selectedPage == i
-                                        ? const Color(0xFF00A3E0)
-                                        : Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '$i',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                  return Column(
+                    children: [
+                      // 2-Column Cards Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double maxWidth = constraints.maxWidth;
+                          int crossAxisCount = 2;
+
+                          if (maxWidth < 768) {
+                            crossAxisCount = 1;
+                          }
+
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: reportsList.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                  mainAxisExtent: 108,
+                                ),
+                            itemBuilder: (context, index) {
+                              final item = reportsList[index];
+                              return _buildReportCard(item);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Bottom Pagination Row
+                      if (totalPages > 1)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 1; i <= totalPages; i++) ...[
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPage = i;
+                                    });
+                                    controller.fetchIgnitionReports(page: i);
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: _selectedPage == i
-                                          ? Colors.white
-                                          : const Color(0xFF344054),
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$i',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedPage == i
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
 
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // NEXT Button
-                            if (_selectedPage <
-                                (_reportsList.length / 10).ceil())
-                              InkWell(
-                                onTap: () {
-                                  if (_selectedPage <
-                                      (_reportsList.length / 10).ceil()) {
-                                    setState(() {
-                                      _selectedPage++;
-                                    });
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              // NEXT Button
+                              if (_selectedPage < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (_selectedPage < totalPages) {
+                                      setState(() {
+                                        _selectedPage++;
+                                      });
+                                      controller.fetchIgnitionReports(
+                                        page: _selectedPage,
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -339,7 +325,7 @@ class _IgnitionReportsViewState extends State<IgnitionReportsView> {
   }
 
   Widget _buildReportCard(Map<String, dynamic> item) {
-    final bool isIgnitionOn = item['isIgnitionOn'] as bool;
+    final bool isIgnitionOn = item['isIgnitionOn'] as bool? ?? false;
 
     return Container(
       decoration: BoxDecoration(

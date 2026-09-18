@@ -64,13 +64,20 @@ class EngineHoursChart extends StatelessWidget {
                       const SizedBox(height: 6),
                       // X-Axis Labels
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: dataPoints.map((item) {
-                          return Text(
-                            item.date,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF667085),
+                          return Expanded(
+                            child: Center(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  _formatDateLabel(item.date),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF667085),
+                                  ),
+                                ),
+                              ),
                             ),
                           );
                         }).toList(),
@@ -84,6 +91,34 @@ class EngineHoursChart extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatDateLabel(String date) {
+    final trimmed = date.trim();
+    if (trimmed.contains('-')) {
+      final parts = trimmed.split('-');
+      if (parts.length == 3) {
+        if (parts[0].length == 4) {
+          // YYYY-MM-DD -> DD/MM
+          return '${parts[2]}/${parts[1]}';
+        } else if (parts[2].length == 4) {
+          // DD-MM-YYYY -> DD/MM
+          return '${parts[0]}/${parts[1]}';
+        }
+      }
+    } else if (trimmed.contains('/')) {
+      final parts = trimmed.split('/');
+      if (parts.length == 3) {
+        if (parts[0].length == 4) {
+          // YYYY/MM/DD -> DD/MM
+          return '${parts[2]}/${parts[1]}';
+        } else if (parts[2].length == 4) {
+          // DD/MM/YYYY -> DD/MM
+          return '${parts[0]}/${parts[1]}';
+        }
+      }
+    }
+    return trimmed;
   }
 }
 

@@ -14,64 +14,12 @@ class StoppageReportsView extends StatefulWidget {
 class _StoppageReportsViewState extends State<StoppageReportsView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _stoppageReportsList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'location': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final DashboardController controller = Get.find<DashboardController>();
+    controller.fetchStoppageReports(page: _selectedPage);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -232,106 +180,142 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // 2-Column Cards Grid
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final double maxWidth = constraints.maxWidth;
-                        int crossAxisCount = 2;
+                child: Obx(() {
+                  if (controller.isStoppageReportLoading.value) {
+                    return const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      ),
+                    );
+                  }
 
-                        if (maxWidth < 768) {
-                          crossAxisCount = 1;
-                        }
+                  final reportsList = controller.stoppageReports;
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _stoppageReportsList.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
-                                mainAxisExtent: maxWidth < 768 ? 120 : 108,
-                              ),
-                          itemBuilder: (context, index) {
-                            final item = _stoppageReportsList[index];
-                            return _buildStoppageCard(item);
-                          },
-                        );
-                      },
-                    ),
+                  if (reportsList.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(
+                        child: Text(
+                          'No stoppage reports available',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: Color(0xFF667085),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
-                    const SizedBox(height: 24),
+                  final totalPages = (reportsList.length / 10).ceil();
 
-                    // Bottom Pagination Row
-                    if ((_stoppageReportsList.length / 10).ceil() > 1)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (int i = 1; i <= (_stoppageReportsList.length / 10).ceil(); i++) ...[
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedPage = i;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _selectedPage == i
-                                        ? const Color(0xFF00A3E0)
-                                        : Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '$i',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                  return Column(
+                    children: [
+                      // 2-Column Cards Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double maxWidth = constraints.maxWidth;
+                          int crossAxisCount = 2;
+
+                          if (maxWidth < 768) {
+                            crossAxisCount = 1;
+                          }
+
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: reportsList.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                  mainAxisExtent: maxWidth < 768 ? 120 : 108,
+                                ),
+                            itemBuilder: (context, index) {
+                              final item = reportsList[index];
+                              return _buildStoppageCard(item);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Bottom Pagination Row
+                      if (totalPages > 1)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 1; i <= totalPages; i++) ...[
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPage = i;
+                                    });
+                                    controller.fetchStoppageReports(page: i);
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: _selectedPage == i
-                                          ? Colors.white
-                                          : const Color(0xFF344054),
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$i',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedPage == i
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
 
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // NEXT Button
-                            if (_selectedPage < (_stoppageReportsList.length / 10).ceil())
-                              InkWell(
-                                onTap: () {
-                                  if (_selectedPage < (_stoppageReportsList.length / 10).ceil()) {
-                                    setState(() {
-                                      _selectedPage++;
-                                    });
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              // NEXT Button
+                              if (_selectedPage < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (_selectedPage < totalPages) {
+                                      setState(() {
+                                        _selectedPage++;
+                                      });
+                                      controller.fetchStoppageReports(
+                                        page: _selectedPage,
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -373,7 +357,7 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      item['vehicle'],
+                      item['vehicle']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.bold,
@@ -386,7 +370,7 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
                       style: TextStyle(fontSize: 11, color: Color(0xFF667085)),
                     ),
                     Text(
-                      item['duration'],
+                      item['duration']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,
@@ -410,7 +394,7 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        item['startTime'],
+                        item['startTime']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -425,7 +409,7 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        item['endTime'],
+                        item['endTime']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -452,7 +436,7 @@ class _StoppageReportsViewState extends State<StoppageReportsView> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        item['location'],
+                        item['location']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,

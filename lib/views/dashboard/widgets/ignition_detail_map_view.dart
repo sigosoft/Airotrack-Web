@@ -20,11 +20,54 @@ class IgnitionDetailMapView extends StatefulWidget {
 class _IgnitionDetailMapViewState extends State<IgnitionDetailMapView> {
   bool _isDialogVisible = true;
 
+  double? _parseDouble(dynamic val) {
+    if (val == null) return null;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
-    final vehicle = widget.reportData?['vehicle'] ?? 'KL 07 D 0518';
-    final isIgnitionOn = widget.reportData?['isIgnitionOn'] ?? true;
-    final timestamp = widget.reportData?['timestamp'] ?? '08 Oct 2025 12:30 PM';
+    final vehicle = widget.reportData?['vehicle'] ??
+        widget.reportData?['vehicle_number'] ??
+        widget.reportData?['plate_number'] ??
+        'Vehicle';
+    final isIgnitionOn = widget.reportData?['isIgnitionOn'] ??
+        (widget.reportData?['ignition']?.toString().toLowerCase() == 'on' ||
+            widget.reportData?['status']?.toString().toLowerCase().contains('on') == true);
+    final timestamp = widget.reportData?['timestamp'] ??
+        widget.reportData?['time'] ??
+        widget.reportData?['created_at'] ??
+        '-';
+
+    final rawLat = widget.reportData?['latitude'] ??
+        widget.reportData?['lat'];
+    final rawLng = widget.reportData?['longitude'] ??
+        widget.reportData?['lng'];
+    final lat = _parseDouble(rawLat);
+    final lng = _parseDouble(rawLng);
+    final hasCoords = lat != null && lng != null;
+    final markerPoint = hasCoords ? LatLng(lat, lng) : const LatLng(10.038, 76.325);
+
+    final eventStr = widget.reportData?['event'] ??
+        widget.reportData?['event_type'] ??
+        (isIgnitionOn ? 'Ignition On' : 'Ignition Off');
+    final positionStr = hasCoords
+        ? '${lat.toStringAsFixed(6)}°, ${lng.toStringAsFixed(6)}°'
+        : (widget.reportData?['position']?.toString() ?? '-');
+    final altitudeStr = widget.reportData?['altitude']?.toString() ??
+        widget.reportData?['elevation']?.toString() ??
+        '-';
+    final angleStr = widget.reportData?['angle']?.toString() ??
+        widget.reportData?['course']?.toString() ??
+        widget.reportData?['bearing']?.toString() ??
+        '-';
+    final speedStr = widget.reportData?['speed']?.toString() ??
+        widget.reportData?['speed_kmph']?.toString() ??
+        '0 Kmph';
+    final addressStr = widget.reportData?['location']?.toString() ??
+        widget.reportData?['address']?.toString() ??
+        '-';
     final isMobile = CustomMediaQuery.isMobile(context);
 
     return Scaffold(
@@ -77,8 +120,8 @@ class _IgnitionDetailMapViewState extends State<IgnitionDetailMapView> {
                 // OpenStreetMap Canvas
                 FlutterMap(
                   options: MapOptions(
-                    initialCenter: const LatLng(10.038, 76.325),
-                    initialZoom: 13.5,
+                    initialCenter: markerPoint,
+                    initialZoom: hasCoords ? 14.0 : 12.0,
                     onTap: (tapPosition, point) {
                       setState(() {
                         _isDialogVisible = !_isDialogVisible;
@@ -91,27 +134,28 @@ class _IgnitionDetailMapViewState extends State<IgnitionDetailMapView> {
                       userAgentPackageName: 'com.airotrack.app',
                     ),
                     // Red Pin Marker
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: const LatLng(10.044, 76.320),
-                          width: 48,
-                          height: 48,
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _isDialogVisible = !_isDialogVisible;
-                              });
-                            },
-                            child: const Icon(
-                              Icons.location_on_rounded,
-                              size: 48,
-                              color: Color(0xFFE53935),
+                    if (hasCoords)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: markerPoint,
+                            width: 48,
+                            height: 48,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _isDialogVisible = !_isDialogVisible;
+                                });
+                              },
+                              child: const Icon(
+                                Icons.location_on_rounded,
+                                size: 48,
+                                color: Color(0xFFE53935),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                   ],
                 ),
 
@@ -169,12 +213,12 @@ class _IgnitionDetailMapViewState extends State<IgnitionDetailMapView> {
 
                             // Detail Field Rows
                             _buildDetailRow('Vehicle :', vehicle),
-                            _buildDetailRow('Event :', isIgnitionOn ? 'Ignition On' : 'Ignition Off'),
-                            _buildDetailRow('Position :', '11.612885°75.7601470°'),
-                            _buildDetailRow('Altitude :', '8'),
-                            _buildDetailRow('Angle :', '199°'),
-                            _buildDetailRow('Speed :', '30 Mph'),
-                            _buildDetailRow('Address :', 'Puthiyakavu Junction,Karunagappalli, Kerala'),
+                            _buildDetailRow('Event :', eventStr),
+                            _buildDetailRow('Position :', positionStr),
+                            _buildDetailRow('Altitude :', altitudeStr),
+                            _buildDetailRow('Angle :', angleStr),
+                            _buildDetailRow('Speed :', speedStr),
+                            _buildDetailRow('Address :', addressStr),
                             _buildDetailRow('Time :', timestamp),
                           ],
                         ),

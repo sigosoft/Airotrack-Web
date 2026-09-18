@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../controllers/profile_controller.dart';
 import '../../utils/custom_media_query.dart';
 import 'widgets/account_settings_content.dart';
+import 'widgets/change_password_content.dart';
 import 'widgets/coming_soon_content.dart';
 import 'widgets/general_settings_content.dart';
 import 'widgets/profile_sidebar_menu.dart';
@@ -26,7 +27,7 @@ class ProfileView extends StatelessWidget {
         case 2:
           return const RaiseTicketContent();
         case 3:
-          return const ComingSoonContent(title: 'Change Password');
+          return const ChangePasswordContent();
         case 4:
           return const ComingSoonContent(title: 'Configure Alerts');
         case 0:

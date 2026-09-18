@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../controllers/home_controller.dart';
+import '../../../controllers/vehicle_detail_controller.dart';
 import 'engine_success_dialog.dart';
 
 class SendCommandDialog extends StatefulWidget {
-  final String vehicleNumber;
+  final String? vehicleNumber;
 
   const SendCommandDialog({
     super.key,
-    this.vehicleNumber = 'KL 07 D 0518',
+    this.vehicleNumber,
   });
 
   @override
@@ -17,6 +19,23 @@ class SendCommandDialog extends StatefulWidget {
 
 class _SendCommandDialogState extends State<SendCommandDialog> {
   int selectedCommand = 0; // 0: Stop Engine, 1: Resume Engine
+
+  String get effectiveVehicleNumber {
+    if (widget.vehicleNumber != null && widget.vehicleNumber!.isNotEmpty) {
+      return widget.vehicleNumber!;
+    }
+    if (Get.isRegistered<VehicleDetailController>()) {
+      final v = Get.find<VehicleDetailController>().vehicleDetail.value.vehicleNumber;
+      if (v.isNotEmpty) return v;
+    }
+    if (Get.isRegistered<HomeController>()) {
+      final home = Get.find<HomeController>();
+      if (home.vehicles.isNotEmpty) {
+        return home.vehicles.first.plateNumber;
+      }
+    }
+    return 'Vehicle';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +54,7 @@ class _SendCommandDialogState extends State<SendCommandDialog> {
           children: [
             // 1. Header Title
             Text(
-              'Send Command - ${widget.vehicleNumber}',
+              'Send Command - $effectiveVehicleNumber',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

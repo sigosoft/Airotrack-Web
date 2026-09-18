@@ -9,7 +9,13 @@ class ApiConfig {
 class ApiEndPoints {
   static String login = "login";
   static String home = "home";
-  static String alerts = "alerts";
+  static String alertsReport = "reports/alerts";
+  static String profile = "profile";
+  static String updateProfile = "update_profile";
+  static String changePassword = "changePassword";
+  static String deleteAccount = "delete_account";
+  static String dashboard = "dashboard";
+  static String statistics = "statistics";
   static String vehicleHistory = "track_vehicle";
   static String liveTrack = "live_track";
   static String liveTrackSnapshot = "live_track_snapshot";
@@ -31,4 +37,11 @@ class ApiEndPoints {
 
   /// Linked geofences for a vehicle (full geometry for map display).
   static String vehicleGeofences = "vehicle_geofences";
+  static String ignitionReport = "reports/ignition";
+  static String stoppageReport = "reports/stoppage";
+  static String tripReport = "reports/trip";
+  static String dailyReport = "reports/daily";
+  static String summaryReport = "reports/summary";
+  static String overspeedReport = "reports/overspeed";
+  static String geofenceReport = "reports/geofence";
 }

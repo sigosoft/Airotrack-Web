@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../constants/app_colors.dart';
+import '../../../controllers/home_controller.dart';
+import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/app_toast.dart';
 
 class ShareLocationDialog extends StatefulWidget {
-  final String vehicleNumber;
+  final String? vehicleNumber;
 
   const ShareLocationDialog({
     super.key,
-    this.vehicleNumber = 'KL 07 D 0518',
+    this.vehicleNumber,
   });
 
   @override
@@ -18,6 +20,23 @@ class ShareLocationDialog extends StatefulWidget {
 
 class _ShareLocationDialogState extends State<ShareLocationDialog> {
   int selectedOption = 0; // 0: Only Once, 1: 1 Hour, 2: 1 Day, 3: 1 Week, 4: 2 Weeks, 5: Custom Hours
+
+  String get effectiveVehicleNumber {
+    if (widget.vehicleNumber != null && widget.vehicleNumber!.isNotEmpty) {
+      return widget.vehicleNumber!;
+    }
+    if (Get.isRegistered<VehicleDetailController>()) {
+      final v = Get.find<VehicleDetailController>().vehicleDetail.value.vehicleNumber;
+      if (v.isNotEmpty) return v;
+    }
+    if (Get.isRegistered<HomeController>()) {
+      final home = Get.find<HomeController>();
+      if (home.vehicles.isNotEmpty) {
+        return home.vehicles.first.plateNumber;
+      }
+    }
+    return 'Vehicle';
+  }
 
   final options = [
     'Only Once',
@@ -48,7 +67,7 @@ class _ShareLocationDialogState extends State<ShareLocationDialog> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Share Live Location  -  ${widget.vehicleNumber}',
+                  'Share Live Location  -  $effectiveVehicleNumber',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

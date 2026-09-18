@@ -14,44 +14,12 @@ class TripReportsView extends StatefulWidget {
 class _TripReportsViewState extends State<TripReportsView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _tripReportsList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'distance': '18.0 Km',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'startLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'endLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'distance': '18.0 Km',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'startLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'endLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'distance': '18.0 Km',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'startLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'endLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'duration': '02h 40m',
-      'distance': '18.0 Km',
-      'startTime': 'Oct 17, 2025 12:00:08 AM',
-      'endTime': 'Oct 17, 2025 2:40:08 AM',
-      'startLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-      'endLocation': 'Puthiyakavu Junction, Karunagappalli, Kerala 690539, India',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final DashboardController controller = Get.find<DashboardController>();
+    controller.fetchTripReports(page: _selectedPage);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -213,106 +181,142 @@ class _TripReportsViewState extends State<TripReportsView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // 2-Column Cards Grid
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final double maxWidth = constraints.maxWidth;
-                        int crossAxisCount = 2;
+                child: Obx(() {
+                  if (controller.isTripReportLoading.value) {
+                    return const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      ),
+                    );
+                  }
 
-                        if (maxWidth < 768) {
-                          crossAxisCount = 1;
-                        }
+                  final reportsList = controller.tripReports;
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _tripReportsList.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            mainAxisExtent: maxWidth < 768 ? 165 : 148,
+                  if (reportsList.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(
+                        child: Text(
+                          'No trip reports available',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: Color(0xFF667085),
                           ),
-                          itemBuilder: (context, index) {
-                            final item = _tripReportsList[index];
-                            return _buildTripCard(item);
-                          },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    );
+                  }
 
-                    const SizedBox(height: 24),
+                  final totalPages = (reportsList.length / 10).ceil();
 
-                    // Bottom Pagination Row
-                    if ((_tripReportsList.length / 10).ceil() > 1)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (int i = 1; i <= (_tripReportsList.length / 10).ceil(); i++) ...[
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedPage = i;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _selectedPage == i
-                                        ? const Color(0xFF00A3E0)
-                                        : Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '$i',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                  return Column(
+                    children: [
+                      // 2-Column Cards Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double maxWidth = constraints.maxWidth;
+                          int crossAxisCount = 2;
+
+                          if (maxWidth < 768) {
+                            crossAxisCount = 1;
+                          }
+
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: reportsList.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                              mainAxisExtent: maxWidth < 768 ? 165 : 148,
+                            ),
+                            itemBuilder: (context, index) {
+                              final item = reportsList[index];
+                              return _buildTripCard(item);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Bottom Pagination Row
+                      if (totalPages > 1)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 1; i <= totalPages; i++) ...[
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPage = i;
+                                    });
+                                    controller.fetchTripReports(page: i);
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: _selectedPage == i
-                                          ? Colors.white
-                                          : const Color(0xFF344054),
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$i',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedPage == i
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
 
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // NEXT Button
-                            if (_selectedPage < (_tripReportsList.length / 10).ceil())
-                              InkWell(
-                                onTap: () {
-                                  if (_selectedPage < (_tripReportsList.length / 10).ceil()) {
-                                    setState(() {
-                                      _selectedPage++;
-                                    });
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              // NEXT Button
+                              if (_selectedPage < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (_selectedPage < totalPages) {
+                                      setState(() {
+                                        _selectedPage++;
+                                      });
+                                      controller.fetchTripReports(
+                                        page: _selectedPage,
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -354,7 +358,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      item['vehicle'],
+                      item['vehicle']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.bold,
@@ -370,7 +374,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                       ),
                     ),
                     Text(
-                      item['duration'],
+                      item['duration']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,
@@ -398,7 +402,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                       ),
                     ),
                     Text(
-                      item['distance'],
+                      item['distance']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,
@@ -421,7 +425,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        item['startTime'],
+                        item['startTime']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -436,7 +440,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        item['endTime'],
+                        item['endTime']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -463,7 +467,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        item['startLocation'],
+                        item['startLocation']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w500,
@@ -493,7 +497,7 @@ class _TripReportsViewState extends State<TripReportsView> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        item['endLocation'],
+                        item['endLocation']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w500,

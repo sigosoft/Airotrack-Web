@@ -135,11 +135,60 @@ class AccountSettingsContent extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildPasswordField(label: 'Current Password'),
+                  _buildPasswordField(
+                    label: 'Current Password',
+                    controller: controller.currentPasswordController,
+                  ),
                   const SizedBox(height: 16),
-                  _buildPasswordField(label: 'New Password'),
+                  _buildPasswordField(
+                    label: 'New Password',
+                    controller: controller.newPasswordController,
+                  ),
                   const SizedBox(height: 16),
-                  _buildPasswordField(label: 'Confirm Password'),
+                  _buildPasswordField(
+                    label: 'Confirm Password',
+                    controller: controller.confirmPasswordController,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Confirm Button
+                  Obx(() {
+                    return SizedBox(
+                      width: isMobile ? double.infinity : 180,
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: controller.isChangingPassword.value
+                            ? null
+                            : () => controller.changePassword(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.buttonBlue,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: controller.isChangingPassword.value
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Text(
+                                'Confirm',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -147,9 +196,7 @@ class AccountSettingsContent extends StatelessWidget {
 
             // --- SECTION 3: DELETE ACCOUNT ---
             InkWell(
-              onTap: () {
-                // Delete Account handler trigger
-              },
+              onTap: controller.deleteAccount,
               borderRadius: BorderRadius.circular(4),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -195,16 +242,25 @@ class AccountSettingsContent extends StatelessWidget {
                 style: const TextStyle(fontSize: 13, color: Color(0xFF475467)),
                 decoration: InputDecoration(
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   filled: true,
                   fillColor: Colors.white,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
-                    borderSide: const BorderSide(color: Color(0xFFE4E7EC), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE4E7EC),
+                      width: 1,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
-                    borderSide: const BorderSide(color: Color(0xFF00A3E0), width: 1.5),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF00A3E0),
+                      width: 1.5,
+                    ),
                   ),
                 ),
               ),
@@ -220,7 +276,10 @@ class AccountSettingsContent extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFBEE3F8), width: 1.5),
+                  border: Border.all(
+                    color: const Color(0xFFBEE3F8),
+                    width: 1.5,
+                  ),
                 ),
                 child: const Text(
                   'Edit',
@@ -238,7 +297,10 @@ class AccountSettingsContent extends StatelessWidget {
     );
   }
 
-  Widget _buildPasswordField({required String label}) {
+  Widget _buildPasswordField({
+    required String label,
+    TextEditingController? controller,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -252,11 +314,15 @@ class AccountSettingsContent extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         TextField(
+          controller: controller,
           obscureText: true,
           style: const TextStyle(fontSize: 13, color: Color(0xFF344054)),
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
             filled: true,
             fillColor: Colors.white,
             enabledBorder: OutlineInputBorder(
@@ -265,7 +331,10 @@ class AccountSettingsContent extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: Color(0xFF00A3E0), width: 1.5),
+              borderSide: const BorderSide(
+                color: Color(0xFF00A3E0),
+                width: 1.5,
+              ),
             ),
           ),
         ),

@@ -14,56 +14,12 @@ class OverSpeedReportsView extends StatefulWidget {
 class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _overSpeedReportsList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'speed': '55.00 kmph',
-      'time': 'Oct 17, 2025 12:00:08 AM',
-      'location': 'PuthiyakavuJunction,Karunagappalli, Kerala 690539, India',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final DashboardController controller = Get.find<DashboardController>();
+    controller.fetchOverSpeedReports(page: _selectedPage);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +162,6 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
           ),
 
           // 2. Main Content Body (2-Column Cards Grid & Pagination)
-          // 2. Main Content Body (2-Column Cards Grid & Pagination)
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -224,106 +179,141 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // 2-Column Cards Grid
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final double maxWidth = constraints.maxWidth;
-                        int crossAxisCount = 2;
+                child: Obx(() {
+                  if (controller.isOverSpeedReportLoading.value) {
+                    return const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      ),
+                    );
+                  }
 
-                        if (maxWidth < 768) {
-                          crossAxisCount = 1;
-                        }
+                  if (controller.overSpeedReports.isEmpty) {
+                    return const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: Text(
+                          'No overspeed reports found',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF667085),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _overSpeedReportsList.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
-                                mainAxisExtent: maxWidth < 768 ? 120 : 108,
-                              ),
-                          itemBuilder: (context, index) {
-                            final item = _overSpeedReportsList[index];
-                            return _buildOverSpeedCard(item);
-                          },
-                        );
-                      },
-                    ),
+                  final reportsList = controller.overSpeedReports;
+                  final totalPages = (reportsList.length / 10).ceil();
 
-                    const SizedBox(height: 24),
+                  return Column(
+                    children: [
+                      // 2-Column Cards Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double maxWidth = constraints.maxWidth;
+                          int crossAxisCount = 2;
 
-                    // Bottom Pagination Row
-                    if ((_overSpeedReportsList.length / 10).ceil() > 1)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (int i = 1; i <= (_overSpeedReportsList.length / 10).ceil(); i++) ...[
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedPage = i;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _selectedPage == i
-                                        ? const Color(0xFF00A3E0)
-                                        : Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '$i',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                          if (maxWidth < 768) {
+                            crossAxisCount = 1;
+                          }
+
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: reportsList.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                              mainAxisExtent: maxWidth < 768 ? 120 : 108,
+                            ),
+                            itemBuilder: (context, index) {
+                              final item = reportsList[index];
+                              return _buildOverSpeedCard(item);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Bottom Pagination Row
+                      if (totalPages > 1)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (int i = 1; i <= totalPages; i++) ...[
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPage = i;
+                                    });
+                                    controller.fetchOverSpeedReports(page: i);
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: _selectedPage == i
-                                          ? Colors.white
-                                          : const Color(0xFF344054),
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$i',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedPage == i
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
 
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // NEXT Button
-                            if (_selectedPage < (_overSpeedReportsList.length / 10).ceil())
-                              InkWell(
-                                onTap: () {
-                                  if (_selectedPage < (_overSpeedReportsList.length / 10).ceil()) {
-                                    setState(() {
-                                      _selectedPage++;
-                                    });
-                                  }
-                                },
-                                child: const Text(
-                                  'NEXT',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00A3E0),
-                                    letterSpacing: 0.5,
+                              // NEXT Button
+                              if (_selectedPage < totalPages)
+                                InkWell(
+                                  onTap: () {
+                                    if (_selectedPage < totalPages) {
+                                      setState(() {
+                                        _selectedPage++;
+                                      });
+                                      controller.fetchOverSpeedReports(
+                                        page: _selectedPage,
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'NEXT',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00A3E0),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),
@@ -365,7 +355,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      item['vehicle'],
+                      item['vehicle']?.toString() ?? '',
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.bold,
@@ -383,7 +373,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          item['speed'],
+                          item['speed']?.toString() ?? '',
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -409,7 +399,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        item['time'],
+                        item['time']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -436,7 +426,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        item['location'],
+                        item['location']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -454,6 +444,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
             ),
           ),
 
+          // Bottom Right Square Blue Action Button (↗)
           // Bottom Right Square Blue Action Button (↗)
           Positioned(
             right: 0,

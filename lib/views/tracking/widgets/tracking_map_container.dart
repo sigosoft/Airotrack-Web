@@ -22,19 +22,7 @@ class TrackingMapContainer extends StatelessWidget {
     final VehicleDetailController controller =
         Get.find<VehicleDetailController>();
 
-    // Route points in Kalamassery / Kochi matching reference image
-    final routePoints = [
-      const LatLng(10.052, 76.325),
-      const LatLng(10.048, 76.322),
-      const LatLng(10.040, 76.315),
-      const LatLng(10.038, 76.318),
-      const LatLng(10.032, 76.312),
-      const LatLng(10.030, 76.328),
-      const LatLng(10.026, 76.335),
-    ];
 
-    final currentVehiclePosition = routePoints.first;
-    final startFlagPosition = routePoints.last;
 
     return Column(
       children: [
@@ -48,31 +36,25 @@ class TrackingMapContainer extends StatelessWidget {
               color: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: isNarrow
-                  ? FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildTopTabItem(
-                            'History',
-                            Icons.access_time_rounded,
-                            0,
-                          ),
-                          const SizedBox(width: 24),
-                          _buildTopTabItem(
-                            'Alerts',
-                            Icons.notifications_none_rounded,
-                            1,
-                          ),
-                          const SizedBox(width: 24),
-                          _buildTopTabItem(
-                            'Statistics',
-                            Icons.analytics_outlined,
-                            2,
-                          ),
-                        ],
-                      ),
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildTopTabItem(
+                          'History',
+                          Icons.access_time_rounded,
+                          0,
+                        ),
+                        _buildTopTabItem(
+                          'Alerts',
+                          Icons.notifications_none_rounded,
+                          1,
+                        ),
+                        _buildTopTabItem(
+                          'Statistics',
+                          Icons.analytics_outlined,
+                          2,
+                        ),
+                      ],
                     )
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -105,30 +87,45 @@ class TrackingMapContainer extends StatelessWidget {
               // Dynamic Map Canvas Layer
               Obx(() {
                 final detail = controller.vehicleDetail.value;
-                final lat = detail.latitude ?? 10.038;
-                final lng = detail.longitude ?? 76.325;
-                final currentVehiclePosition = LatLng(lat, lng);
+                final lat = detail.latitude ?? 0.0;
+                final lng = detail.longitude ?? 0.0;
+                final currentVehiclePosition = (lat != 0.0 && lng != 0.0)
+                    ? LatLng(lat, lng)
+                    : const LatLng(10.038, 76.325);
 
                 // Build dynamic route polylines if historyPoints exist
-                final routePoints = <LatLng>[];
+                final dynamicHistoryPoints = <LatLng>[];
                 if (controller.historyPoints.isNotEmpty) {
                   for (final pt in controller.historyPoints) {
                     final pLat = double.tryParse(pt['latitude']?.toString() ?? pt['lat']?.toString() ?? '');
                     final pLng = double.tryParse(pt['longitude']?.toString() ?? pt['lng']?.toString() ?? '');
                     if (pLat != null && pLng != null) {
-                      routePoints.add(LatLng(pLat, pLng));
+                      dynamicHistoryPoints.add(LatLng(pLat, pLng));
                     }
                   }
                 }
 
-                final startFlagPosition = routePoints.isNotEmpty
-                    ? routePoints.last
-                    : LatLng(lat - 0.005, lng - 0.005);
+                final vehiclePos = controller.liveMarkerPosition.value ?? currentVehiclePosition;
+                final bearing = controller.liveMarkerBearing.value;
+                final isMovingWest = bearing > 180.0 && bearing < 360.0;
+                final displayRoute = controller.liveRoadPolyline.isNotEmpty
+                    ? controller.liveRoadPolyline
+                    : dynamicHistoryPoints;
+
+                final startFlagPosition = displayRoute.isNotEmpty
+                    ? displayRoute.last
+                    : null;
 
                 return FlutterMap(
+                  mapController: controller.liveMapController,
                   options: MapOptions(
-                    initialCenter: currentVehiclePosition,
-                    initialZoom: 13.5,
+                    initialCenter: vehiclePos,
+                    initialZoom: 15.0,
+                    onPositionChanged: (camera, hasGesture) {
+                      if (hasGesture) {
+                        controller.isLiveLocked.value = false;
+                      }
+                    },
                     onTap: (tapPosition, point) {
                       controller.toggleMapDialog();
                     },
@@ -140,11 +137,11 @@ class TrackingMapContainer extends StatelessWidget {
                       userAgentPackageName: 'com.airotrack.app',
                     ),
                     // Dynamic Vehicle Route Polyline
-                    if (routePoints.isNotEmpty)
+                    if (displayRoute.isNotEmpty)
                       PolylineLayer(
                         polylines: [
                           Polyline(
-                            points: routePoints,
+                            points: displayRoute,
                             color: const Color(0xFF00A859),
                             strokeWidth: 4.0,
                           ),
@@ -155,30 +152,34 @@ class TrackingMapContainer extends StatelessWidget {
                       markers: [
                         // Current Vehicle Marker (Green Car.png)
                         Marker(
-                          point: currentVehiclePosition,
+                          point: vehiclePos,
                           width: 44,
                           height: 44,
                           child: GestureDetector(
                             onTap: controller.toggleMapDialog,
-                            child: Image.asset(
-                              AppAssets.greenCar,
-                              fit: BoxFit.contain,
+                            child: Transform.flip(
+                              flipX: isMovingWest,
+                              child: Image.asset(
+                                AppAssets.greenCar,
+                                fit: BoxFit.contain,
+                              ),
                             ),
                           ),
                         ),
                         // Start Flag Marker (Flag.png)
-                        Marker(
-                          point: startFlagPosition,
-                          width: 22,
-                          height: 22,
-                          child: GestureDetector(
-                            onTap: controller.toggleMapDialog,
-                            child: Image.asset(
-                              AppAssets.flag,
-                              fit: BoxFit.contain,
+                        if (startFlagPosition != null)
+                          Marker(
+                            point: startFlagPosition,
+                            width: 22,
+                            height: 22,
+                            child: GestureDetector(
+                              onTap: controller.toggleMapDialog,
+                              child: Image.asset(
+                                AppAssets.flag,
+                                fit: BoxFit.contain,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ],
@@ -283,27 +284,36 @@ class TrackingMapContainer extends StatelessWidget {
                 bottom: 130,
                 child: SingleChildScrollView(
                   child: Column(
-                    children: const [
-                      _SeperateMapIconButton(icon: Icons.map_outlined),
-                      _SeperateMapIconButton(
+                    children: [
+                      const _SeperateMapIconButton(icon: Icons.map_outlined),
+                      const _SeperateMapIconButton(
                         icon: Icons.lock_open_rounded,
                         color: Color(0xFF00A859),
                       ),
-                      _SeperateMapIconButton(text: 'P', color: Color(0xFFE53935)),
-                      _SeperateMapIconButton(icon: Icons.videocam_outlined),
-                      _SeperateMapIconButton(
+                      const _SeperateMapIconButton(text: 'P', color: Color(0xFFE53935)),
+                      const _SeperateMapIconButton(icon: Icons.videocam_outlined),
+                      const _SeperateMapIconButton(
                         icon: Icons.alt_route_rounded,
                         color: Color(0xFF00A859),
                       ),
-                      _SeperateMapIconButton(icon: Icons.my_location_rounded),
-                      _SeperateMapIconButton(icon: Icons.person_outline_rounded),
                       _SeperateMapIconButton(
+                        icon: Icons.my_location_rounded,
+                        onTap: controller.recenterLiveMap,
+                      ),
+                      const _SeperateMapIconButton(icon: Icons.person_outline_rounded),
+                      const _SeperateMapIconButton(
                         icon: Icons.person_pin_circle_outlined,
                       ),
-                      _SeperateMapIconButton(icon: Icons.explore_outlined),
-                      SizedBox(height: 4),
-                      _SeperateMapIconButton(icon: Icons.add_rounded),
-                      _SeperateMapIconButton(icon: Icons.remove_rounded),
+                      const _SeperateMapIconButton(icon: Icons.explore_outlined),
+                      const SizedBox(height: 4),
+                      _SeperateMapIconButton(
+                        icon: Icons.add_rounded,
+                        onTap: controller.zoomInLiveMap,
+                      ),
+                      _SeperateMapIconButton(
+                        icon: Icons.remove_rounded,
+                        onTap: controller.zoomOutLiveMap,
+                      ),
                     ],
                   ),
                 ),

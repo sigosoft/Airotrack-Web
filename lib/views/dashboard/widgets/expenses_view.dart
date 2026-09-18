@@ -13,56 +13,18 @@ class ExpensesView extends StatefulWidget {
 class _ExpensesViewState extends State<ExpensesView> {
   int _selectedPage = 1;
 
-  final List<Map<String, dynamic>> _expensesList = [
-    {
-      'vehicle': 'KL 07 D 0518',
-      'dateTime': 'Oct 17, 2025\n05:38:08 PM',
-      'type': 'Food',
-      'quantity': '01',
-      'amount': '200 INR',
-      'paymentType': 'Online',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'dateTime': 'Oct 17, 2025\n05:38:08 PM',
-      'type': 'Food',
-      'quantity': '01',
-      'amount': '200 INR',
-      'paymentType': 'Online',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'dateTime': 'Oct 17, 2025\n05:38:08 PM',
-      'type': 'Food',
-      'quantity': '01',
-      'amount': '200 INR',
-      'paymentType': 'Online',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'dateTime': 'Oct 17, 2025\n05:38:08 PM',
-      'type': 'Food',
-      'quantity': '01',
-      'amount': '200 INR',
-      'paymentType': 'Online',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'dateTime': 'Oct 17, 2025\n05:38:08 PM',
-      'type': 'Food',
-      'quantity': '01',
-      'amount': '200 INR',
-      'paymentType': 'Online',
-    },
-    {
-      'vehicle': 'KL 07 D 0518',
-      'dateTime': 'Oct 17, 2025\n05:38:08 PM',
-      'type': 'Food',
-      'quantity': '01',
-      'amount': '200 INR',
-      'paymentType': 'Online',
-    },
-  ];
+  final List<Map<String, dynamic>> _expensesList = [];
+
+  String _currentDateTimeFormatted() {
+    final now = DateTime.now();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    return '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year} ${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $ampm';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -321,15 +283,29 @@ class _ExpensesViewState extends State<ExpensesView> {
                             ),
 
                             // Table Rows
-                            for (int i = 0; i < _expensesList.length; i++) ...[
-                              _buildTableRow(_expensesList[i]),
-                              if (i < _expensesList.length - 1)
-                                const Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: Color(0xFFEAECF0),
+                            if (_expensesList.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 48),
+                                child: Center(
+                                  child: Text(
+                                    'No expenses recorded',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF667085),
+                                    ),
+                                  ),
                                 ),
-                            ],
+                              )
+                            else
+                              for (int i = 0; i < _expensesList.length; i++) ...[
+                                _buildTableRow(_expensesList[i]),
+                                if (i < _expensesList.length - 1)
+                                  const Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: Color(0xFFEAECF0),
+                                  ),
+                              ],
                           ],
                         ),
                       ),
@@ -624,7 +600,7 @@ class _ExpensesViewState extends State<ExpensesView> {
                             child: _buildFormField(
                               label: 'Date',
                               child: _buildDatePickerInput(
-                                '13 Oct 2025 10:40 Am',
+                                _currentDateTimeFormatted(),
                               ),
                             ),
                           ),

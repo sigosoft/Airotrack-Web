@@ -5,6 +5,7 @@ import '../../../controllers/home_controller.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../models/tracking_model.dart';
 import '../vehicle_detail_map_view.dart';
+import 'vehicle_action_dialog.dart';
 
 class TrackingCard extends StatelessWidget {
   final TrackingCardData data;
@@ -343,25 +344,11 @@ class TrackingCard extends StatelessWidget {
                       onTap:
                           onArrowTap ??
                           () {
-                            if (Get.isRegistered<HomeController>()) {
-                              final homeCtrl = Get.find<HomeController>();
-                              final match = homeCtrl.vehicles.firstWhereOrNull(
-                                (v) => v.plateNumber == data.registrationNumber,
-                              );
-                              if (match != null) {
-                                if (Get.isRegistered<
-                                  VehicleDetailController
-                                >()) {
-                                  Get.find<VehicleDetailController>()
-                                      .updateFromVehicle(match);
-                                } else {
-                                  Get.put(
-                                    VehicleDetailController(),
-                                  ).updateFromVehicle(match);
-                                }
-                              }
-                            }
-                            Get.to(() => const VehicleDetailMapView());
+                            showDialog(
+                              context: context,
+                              builder: (context) =>
+                                  VehicleActionDialog(data: data),
+                            );
                           },
                       child: Container(
                         width: 36,

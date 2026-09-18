@@ -16,16 +16,84 @@ class TripDetailMapView extends StatefulWidget {
 }
 
 class _TripDetailMapViewState extends State<TripDetailMapView> {
-  final routePoints = [
-    const LatLng(10.035, 76.308),
-    const LatLng(10.033, 76.315),
-    const LatLng(10.035, 76.328),
-    const LatLng(10.042, 76.335),
-  ];
+  double? _parseDouble(dynamic val) {
+    if (val == null) return null;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString());
+  }
 
   @override
   Widget build(BuildContext context) {
-    final vehicleNumber = widget.reportData?['vehicle'] ?? 'KL 07 D 0518';
+    final vehicleNumber = widget.reportData?['vehicle'] ??
+        widget.reportData?['vehicle_number'] ??
+        widget.reportData?['plate_number'] ??
+        'Vehicle';
+
+    final rawStartLat = widget.reportData?['start_latitude'] ??
+        widget.reportData?['start_lat'] ??
+        widget.reportData?['from_latitude'] ??
+        widget.reportData?['from_lat'] ??
+        widget.reportData?['latitude'] ??
+        widget.reportData?['lat'];
+    final rawStartLng = widget.reportData?['start_longitude'] ??
+        widget.reportData?['start_lng'] ??
+        widget.reportData?['from_longitude'] ??
+        widget.reportData?['from_lng'] ??
+        widget.reportData?['longitude'] ??
+        widget.reportData?['lng'];
+    final rawEndLat = widget.reportData?['end_latitude'] ??
+        widget.reportData?['end_lat'] ??
+        widget.reportData?['to_latitude'] ??
+        widget.reportData?['to_lat'];
+    final rawEndLng = widget.reportData?['end_longitude'] ??
+        widget.reportData?['end_lng'] ??
+        widget.reportData?['to_longitude'] ??
+        widget.reportData?['to_lng'];
+
+    final startLat = _parseDouble(rawStartLat);
+    final startLng = _parseDouble(rawStartLng);
+    final endLat = _parseDouble(rawEndLat);
+    final endLng = _parseDouble(rawEndLng);
+
+    List<LatLng> routePoints = [];
+    if (widget.reportData?['route'] is List) {
+      for (var pt in widget.reportData!['route']) {
+        if (pt is Map && pt['lat'] != null && pt['lng'] != null) {
+          final lat = _parseDouble(pt['lat']);
+          final lng = _parseDouble(pt['lng']);
+          if (lat != null && lng != null) routePoints.add(LatLng(lat, lng));
+        }
+      }
+    }
+    if (routePoints.isEmpty && startLat != null && startLng != null) {
+      routePoints.add(LatLng(startLat, startLng));
+      if (endLat != null && endLng != null) {
+        routePoints.add(LatLng(endLat, endLng));
+      }
+    }
+
+    final initialCenter = routePoints.isNotEmpty
+        ? routePoints.first
+        : const LatLng(10.038, 76.325);
+
+    final speedVal = widget.reportData?['max_speed']?.toString() ??
+        widget.reportData?['speed']?.toString() ??
+        '0';
+    final durationVal = widget.reportData?['duration']?.toString() ??
+        widget.reportData?['trip_duration']?.toString() ??
+        '00:00:00';
+    final distanceVal = widget.reportData?['distance']?.toString() ??
+        widget.reportData?['trip_distance']?.toString() ??
+        '0.0';
+    final startTimeStr = widget.reportData?['startTime']?.toString() ??
+        widget.reportData?['start_time']?.toString() ??
+        widget.reportData?['startLocation']?.toString() ??
+        '-';
+    final endTimeStr = widget.reportData?['endTime']?.toString() ??
+        widget.reportData?['end_time']?.toString() ??
+        widget.reportData?['endLocation']?.toString() ??
+        '-';
+
     final VehicleDetailController controller = Get.put(
       VehicleDetailController(),
     );
@@ -37,8 +105,8 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
           // OpenStreetMap Canvas
           FlutterMap(
             options: MapOptions(
-              initialCenter: const LatLng(10.038, 76.325),
-              initialZoom: 13.5,
+              initialCenter: initialCenter,
+              initialZoom: routePoints.isNotEmpty ? 13.5 : 12.0,
             ),
             children: [
               TileLayer(
@@ -46,42 +114,45 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
                 userAgentPackageName: 'com.airotrack.app',
               ),
               // Route Black Polyline
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: routePoints,
-                    color: Colors.black,
-                    strokeWidth: 3.5,
-                  ),
-                ],
-              ),
+              if (routePoints.length >= 2)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: routePoints,
+                      color: Colors.black,
+                      strokeWidth: 3.5,
+                    ),
+                  ],
+                ),
               // Red Flag (Start) & Green Flag (End) Markers
-              MarkerLayer(
-                markers: [
-                  // Start Red Flag Marker
-                  Marker(
-                    point: routePoints.first,
-                    width: 32,
-                    height: 32,
-                    child: const Icon(
-                      Icons.flag_rounded,
-                      color: Color(0xFFE53935),
-                      size: 32,
+              if (routePoints.isNotEmpty)
+                MarkerLayer(
+                  markers: [
+                    // Start Red Flag Marker
+                    Marker(
+                      point: routePoints.first,
+                      width: 32,
+                      height: 32,
+                      child: const Icon(
+                        Icons.flag_rounded,
+                        color: Color(0xFFE53935),
+                        size: 32,
+                      ),
                     ),
-                  ),
-                  // End Green Flag Marker
-                  Marker(
-                    point: routePoints.last,
-                    width: 32,
-                    height: 32,
-                    child: const Icon(
-                      Icons.flag_rounded,
-                      color: Color(0xFF00A859),
-                      size: 32,
-                    ),
-                  ),
-                ],
-              ),
+                    // End Green Flag Marker
+                    if (routePoints.length > 1)
+                      Marker(
+                        point: routePoints.last,
+                        width: 32,
+                        height: 32,
+                        child: const Icon(
+                          Icons.flag_rounded,
+                          color: Color(0xFF00A859),
+                          size: 32,
+                        ),
+                      ),
+                  ],
+                ),
             ],
           ),
 
@@ -121,13 +192,13 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Top 3 Metric Cards Row (0 Kmph, 00:00:00, 12.5 Km)
+            // 1. Top 3 Metric Cards Row
             Row(
               children: [
                 Expanded(
                   child: _buildMetricCard(
                     icon: Icons.dashboard_outlined,
-                    value: '0',
+                    value: speedVal,
                     unit: 'Kmph',
                   ),
                 ),
@@ -135,7 +206,7 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
                 Expanded(
                   child: _buildMetricCard(
                     icon: Icons.access_time_rounded,
-                    value: '00:00:00',
+                    value: durationVal,
                     unit: '',
                   ),
                 ),
@@ -143,8 +214,8 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
                 Expanded(
                   child: _buildMetricCard(
                     icon: Icons.speed_rounded,
-                    value: '12.5',
-                    unit: 'Km',
+                    value: distanceVal,
+                    unit: distanceVal.toLowerCase().contains('km') ? '' : 'Km',
                   ),
                 ),
               ],
@@ -254,20 +325,16 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
 
             const SizedBox(height: 12),
 
-            // 3. History Trip / Stop Item Card 1 (Red Stop Badge)
+            // 3. History Trip / Stop Item Card
             _buildTripDetailCard(
-              badgeLabel: 'Stop',
-              badgeBgColor: const Color(0xFFFEE4E2),
-              badgeTextColor: const Color(0xFFF04438),
-            ),
-
-            const SizedBox(height: 12),
-
-            // 4. History Trip / Stop Item Card 2 (Green Stop Badge)
-            _buildTripDetailCard(
-              badgeLabel: 'Stop',
+              badgeLabel: 'Trip',
               badgeBgColor: const Color(0xFFD1FADF),
               badgeTextColor: const Color(0xFF12B76A),
+              distance: distanceVal.toLowerCase().contains('km') ? distanceVal : '$distanceVal Km',
+              maxSpeed: speedVal.toLowerCase().contains('km') ? speedVal : '$speedVal Kmph',
+              startTime: startTimeStr,
+              duration: durationVal,
+              endTime: endTimeStr,
             ),
           ],
         ),
@@ -500,6 +567,11 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
     required String badgeLabel,
     required Color badgeBgColor,
     required Color badgeTextColor,
+    String? distance,
+    String? maxSpeed,
+    String? startTime,
+    String? duration,
+    String? endTime,
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -545,9 +617,9 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
                 style: TextStyle(fontSize: 10.5, color: Color(0xFF667085)),
               ),
               const SizedBox(width: 6),
-              const Text(
-                '00.00 Km',
-                style: TextStyle(
+              Text(
+                distance ?? '0.00 Km',
+                style: const TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1D2939),
@@ -565,9 +637,9 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
                 style: TextStyle(fontSize: 10.5, color: Color(0xFF667085)),
               ),
               const SizedBox(width: 6),
-              const Text(
-                '00.00 Km',
-                style: TextStyle(
+              Text(
+                maxSpeed ?? '0.00 Kmph',
+                style: const TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1D2939),
@@ -584,19 +656,19 @@ class _TripDetailMapViewState extends State<TripDetailMapView> {
           _buildTimelineStep(
             icon: Icons.play_arrow_outlined,
             title: 'Start',
-            time: '08 Oct 2025, 12:04:32 AM',
+            time: startTime ?? '-',
             showLineBelow: true,
           ),
           _buildTimelineStep(
             icon: Icons.access_time_rounded,
             title: 'Duration',
-            time: '09h 33m 13s',
+            time: duration ?? '-',
             showLineBelow: true,
           ),
           _buildTimelineStep(
             icon: Icons.stop_rounded,
             title: 'End',
-            time: '08 Oct 2025, 11:01:30 PM',
+            time: endTime ?? '-',
             showLineBelow: false,
           ),
         ],

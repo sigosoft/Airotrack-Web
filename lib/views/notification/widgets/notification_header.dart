@@ -216,9 +216,9 @@ class NotificationHeader extends StatelessWidget {
             // Right: Date Pickers & Filter Button
             Row(
               children: [
-                _buildDatePickerPill('28-08-2025 12:00 AM'),
+                _buildDatePickerPill(_formatCurrentDate()),
                 const SizedBox(width: 10),
-                _buildDatePickerPill('28-08-2025 12:00 AM'),
+                _buildDatePickerPill(_formatCurrentDate()),
                 const SizedBox(width: 10),
                 // Filter Button
                 InkWell(
@@ -277,5 +277,13 @@ class NotificationHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatCurrentDate() {
+    final now = DateTime.now();
+    final d = now.day.toString().padLeft(2, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final y = now.year.toString();
+    return '$d-$m-$y 12:00 AM';
   }
 }
