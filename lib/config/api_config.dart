@@ -4,6 +4,9 @@ class ApiConfig {
   static const String baseUrl = 'https://api-dev.airotrack.in/website/';
   static String imageUrl =
       "https://ourworks.co.in/saimpex-backend/public/storage/";
+
+  static const String mapboxAccessToken =
+      'MAPBOX_ACCESS_TOKEN';
 }
 
 class ApiEndPoints {
