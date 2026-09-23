@@ -132,7 +132,14 @@ class RegisterView extends StatelessWidget {
                         const SizedBox(height: 14),
 
                         // --- 2. Phone Input Field ---
-                        PhoneInputField(controller: controller.phoneController),
+                        Obx(
+                          () => PhoneInputField(
+                            controller: controller.phoneController,
+                            countryCode: controller.countryCode.value,
+                            onCountryChanged: (country) =>
+                                controller.setCountryCode(country.dialCode),
+                          ),
+                        ),
                         const SizedBox(height: 14),
 
                         // --- 3. Password Input Field ---

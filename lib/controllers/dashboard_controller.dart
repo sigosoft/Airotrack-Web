@@ -156,9 +156,10 @@ class DashboardController extends GetxController {
 
     for (int i = 0; i < homeController.vehicles.length; i++) {
       final v = homeController.vehicles[i];
+      final reg = v.plateNumber.isNotEmpty ? v.plateNumber : v.deviceId;
       items.add(
         VehicleItem(
-          registrationNumber: v.plateNumber,
+          registrationNumber: reg,
           status: v.status,
           isSelected: i == selectedVehicleIndex.value,
         ),
@@ -432,8 +433,9 @@ class DashboardController extends GetxController {
       });
     }
 
-    // Parse statistics
-    final stats = data['statistics'] ?? data['summary'] ?? data;
+    // Parse statistics / fleet_status
+    final stats =
+        data['fleet_status'] ?? data['statistics'] ?? data['summary'] ?? data;
     int total = 0,
         running = 0,
         stopped = 0,
@@ -558,11 +560,18 @@ class DashboardController extends GetxController {
         final item = rawVehicles[i];
         if (item is Map) {
           final reg =
-              item['registration_number']?.toString() ??
+              item['vehicle_number']?.toString() ??
+              item['vehicle_no']?.toString() ??
               item['plate_number']?.toString() ??
+              item['registration_number']?.toString() ??
+              item['plateNumber']?.toString() ??
               item['name']?.toString() ??
+              item['imei']?.toString() ??
               '';
-          final st = item['status']?.toString() ?? 'Running';
+          final st =
+              item['status']?.toString() ??
+              item['current_status']?.toString() ??
+              'Running';
           vehicleItems.add(
             VehicleItem(
               registrationNumber: reg,
@@ -570,6 +579,43 @@ class DashboardController extends GetxController {
               isSelected: i == selectedVehicleIndex.value,
             ),
           );
+        }
+      }
+    }
+
+    // Fallback if vehicleItems is empty
+    if (vehicleItems.isEmpty && homeController.vehicles.isNotEmpty) {
+      for (int i = 0; i < homeController.vehicles.length; i++) {
+        final v = homeController.vehicles[i];
+        final name = v.plateNumber.isNotEmpty ? v.plateNumber : v.deviceId;
+        vehicleItems.add(
+          VehicleItem(
+            registrationNumber: name,
+            status: v.status,
+            isSelected: i == selectedVehicleIndex.value,
+          ),
+        );
+      }
+    }
+
+    // Match selected vehicle if provided
+    if (data['selected_vehicle'] is Map) {
+      final sel = data['selected_vehicle'] as Map;
+      final selImei = sel['imei']?.toString();
+      final selVehNo =
+          sel['vehicle_number']?.toString() ?? sel['name']?.toString();
+      if (rawVehicles is List) {
+        for (int i = 0; i < rawVehicles.length; i++) {
+          final vMap = rawVehicles[i];
+          if (vMap is Map) {
+            if ((selImei != null && vMap['imei']?.toString() == selImei) ||
+                (selVehNo != null &&
+                    (vMap['vehicle_number']?.toString() == selVehNo ||
+                        vMap['plate_number']?.toString() == selVehNo))) {
+              selectedVehicleIndex.value = i;
+              break;
+            }
+          }
         }
       }
     }

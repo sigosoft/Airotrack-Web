@@ -126,7 +126,14 @@ class ForgotPasswordView extends StatelessWidget {
                         const SizedBox(height: 28),
 
                         // --- Phone Input Field ---
-                        PhoneInputField(controller: controller.phoneController),
+                        Obx(
+                          () => PhoneInputField(
+                            controller: controller.phoneController,
+                            countryCode: controller.countryCode.value,
+                            onCountryChanged: (country) =>
+                                controller.setCountryCode(country.dialCode),
+                          ),
+                        ),
                         const SizedBox(height: 28),
 
                         // --- Action Button ---

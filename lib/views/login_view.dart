@@ -125,7 +125,17 @@ class LoginView extends StatelessWidget {
                         const SizedBox(height: 28),
 
                         // --- Phone Input Field ---
-                        PhoneInputField(controller: controller.phoneController),
+                        Obx(
+                          () => PhoneInputField(
+                            controller: controller.phoneController,
+                            countryCode: controller.countryCode.value,
+                            onCountryChanged: (country) =>
+                                controller.setCountryCode(country.dialCode),
+                            errorText: controller.phoneError.value.isNotEmpty
+                                ? controller.phoneError.value
+                                : null,
+                          ),
+                        ),
                         const SizedBox(height: 16),
 
                         // --- Password Input Field ---

@@ -36,31 +36,63 @@ class VehicleListCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ...List.generate(vehicleList.length, (index) {
-            final isSelected = selectedIndex == index;
-            final item = vehicleList[index];
-
-            return InkWell(
-              onTap: () => onSelect(index),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                margin: const EdgeInsets.only(bottom: 6),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFE0F2FE) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(4),
-                ),
+          if (vehicleList.isEmpty)
+            const SizedBox(
+              height: 140,
+              child: Center(
                 child: Text(
-                  item.registrationNumber,
+                  'No vehicles available',
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? const Color(0xFF1D2939) : const Color(0xFF475467),
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF98A2B3),
                   ),
                 ),
               ),
-            );
-          }),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 250),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  children: List.generate(vehicleList.length, (index) {
+                    final isSelected = selectedIndex == index;
+                    final item = vehicleList[index];
+
+                    return InkWell(
+                      onTap: () => onSelect(index),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        margin: const EdgeInsets.only(bottom: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFE0F2FE)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          item.registrationNumber,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? const Color(0xFF1D2939)
+                                : const Color(0xFF475467),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
         ],
       ),
     );

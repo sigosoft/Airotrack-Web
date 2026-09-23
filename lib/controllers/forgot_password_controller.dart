@@ -14,6 +14,7 @@ class ForgotPasswordController extends GetxController {
   late TextEditingController newPasswordController;
   late TextEditingController confirmPasswordController;
 
+  final RxString countryCode = '+91'.obs;
   final RxBool isNewPasswordObscured = true.obs;
   final RxBool isConfirmPasswordObscured = true.obs;
   final RxBool isLoading = false.obs;
@@ -27,7 +28,10 @@ class ForgotPasswordController extends GetxController {
     confirmPasswordController = TextEditingController();
 
     phoneController.addListener(() {
-      model.update((val) => val?.phoneNumber = phoneController.text.trim());
+      model.update((val) {
+        val?.phoneNumber = phoneController.text.trim();
+        val?.countryCode = countryCode.value;
+      });
     });
 
     otpController.addListener(() {
@@ -43,6 +47,11 @@ class ForgotPasswordController extends GetxController {
         (val) => val?.confirmPassword = confirmPasswordController.text,
       );
     });
+  }
+
+  void setCountryCode(String code) {
+    countryCode.value = code;
+    model.update((val) => val?.countryCode = code);
   }
 
   @override

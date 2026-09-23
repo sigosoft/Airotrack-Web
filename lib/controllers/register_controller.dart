@@ -14,6 +14,7 @@ class RegisterController extends GetxController {
   late TextEditingController confirmPasswordController;
 
   // Reactive States
+  final RxString countryCode = '+91'.obs;
   final RxBool isPasswordObscured = true.obs;
   final RxBool isConfirmPasswordObscured = true.obs;
   final RxBool isLoading = false.obs;
@@ -32,7 +33,10 @@ class RegisterController extends GetxController {
     });
 
     phoneController.addListener(() {
-      registerModel.update((val) => val?.phoneNumber = phoneController.text.trim());
+      registerModel.update((val) {
+        val?.phoneNumber = phoneController.text.trim();
+        val?.countryCode = countryCode.value;
+      });
     });
 
     passwordController.addListener(() {
@@ -42,6 +46,11 @@ class RegisterController extends GetxController {
     confirmPasswordController.addListener(() {
       registerModel.update((val) => val?.confirmPassword = confirmPasswordController.text);
     });
+  }
+
+  void setCountryCode(String code) {
+    countryCode.value = code;
+    registerModel.update((val) => val?.countryCode = code);
   }
 
   @override

@@ -20,6 +20,7 @@ class LoginController extends GetxController {
   late TextEditingController passwordController;
 
   // Reactive UI & Validation States
+  final RxString countryCode = '+91'.obs;
   final RxBool isPasswordObscured = true.obs;
   final RxBool isPasswordVisible = false.obs;
   final RxBool isLoading = false.obs;
@@ -37,6 +38,7 @@ class LoginController extends GetxController {
       if (phoneError.isNotEmpty) phoneError.value = '';
       loginModel.update((val) {
         val?.phoneNumber = phoneController.text.trim();
+        val?.countryCode = countryCode.value;
       });
     });
 
@@ -45,6 +47,13 @@ class LoginController extends GetxController {
       loginModel.update((val) {
         val?.password = passwordController.text;
       });
+    });
+  }
+
+  void setCountryCode(String code) {
+    countryCode.value = code;
+    loginModel.update((val) {
+      val?.countryCode = code;
     });
   }
 
@@ -147,11 +156,13 @@ class LoginController extends GetxController {
             final dataMap = responseData['data'] as Map;
             if (dataMap['details'] != null && dataMap['details'] is Map) {
               token = dataMap['details']['token']?.toString();
-              displayName = dataMap['details']['name']?.toString() ??
+              displayName =
+                  dataMap['details']['name']?.toString() ??
                   dataMap['details']['username']?.toString() ??
                   dataMap['details']['user_name']?.toString();
             }
-            displayName ??= dataMap['name']?.toString() ??
+            displayName ??=
+                dataMap['name']?.toString() ??
                 dataMap['username']?.toString() ??
                 dataMap['user_name']?.toString();
           }
@@ -172,10 +183,17 @@ class LoginController extends GetxController {
           AppToast.show('Signed in successfully!');
           Get.offAll(() => const DashboardView());
         } else {
-          final msg = (responseData is Map && responseData['message'] != null)
-              ? responseData['message'].toString()
-              : 'Failed to login. Please check your credentials.';
-          AppToast.show(msg, isError: true);
+          final rawMsg =
+              (responseData is Map && responseData['message'] != null)
+              ? responseData['message']
+              : responseData;
+          final msg = AppToast.cleanMessage(rawMsg);
+          AppToast.show(
+            msg.isNotEmpty
+                ? msg
+                : 'Failed to login. Please check your credentials.',
+            isError: true,
+          );
         }
       }
     } catch (e) {
