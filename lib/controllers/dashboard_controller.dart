@@ -28,10 +28,14 @@ class DashboardController extends GetxController {
     }
   }
 
-  late final RxString reportStartDate =
-      _formatInitialReportDate(DateTime.now().subtract(const Duration(days: 7)), isStart: true).obs;
-  late final RxString reportEndDate =
-      _formatInitialReportDate(DateTime.now(), isStart: false).obs;
+  late final RxString reportStartDate = _formatInitialReportDate(
+    DateTime.now().subtract(const Duration(days: 7)),
+    isStart: true,
+  ).obs;
+  late final RxString reportEndDate = _formatInitialReportDate(
+    DateTime.now(),
+    isStart: false,
+  ).obs;
 
   final RxList<Map<String, dynamic>> ignitionReports =
       <Map<String, dynamic>>[].obs;
@@ -1626,7 +1630,10 @@ class DashboardController extends GetxController {
             parsedList.add(_parseSummaryReportItem(item, parentMap));
           } else if (item is Map) {
             parsedList.add(
-              _parseSummaryReportItem(Map<String, dynamic>.from(item), parentMap),
+              _parseSummaryReportItem(
+                Map<String, dynamic>.from(item),
+                parentMap,
+              ),
             );
           }
         }
@@ -2016,8 +2023,8 @@ class DashboardController extends GetxController {
     final dateRange = raw['date_range'] is Map
         ? Map<String, dynamic>.from(raw['date_range'])
         : (parentData?['date_range'] is Map
-            ? Map<String, dynamic>.from(parentData!['date_range'])
-            : null);
+              ? Map<String, dynamic>.from(parentData!['date_range'])
+              : null);
 
     final rawTime =
         raw['time'] ??
@@ -2034,10 +2041,9 @@ class DashboardController extends GetxController {
         raw['address'] ??
         raw['start_address'] ??
         raw['location_name'];
-    String locationStr =
-        (locRaw != null && locRaw.toString().trim().isNotEmpty)
-            ? locRaw.toString()
-            : 'N/A';
+    String locationStr = (locRaw != null && locRaw.toString().trim().isNotEmpty)
+        ? locRaw.toString()
+        : 'N/A';
 
     return {
       ...raw,
@@ -2215,8 +2221,8 @@ class DashboardController extends GetxController {
     final dateRange = raw['date_range'] is Map
         ? Map<String, dynamic>.from(raw['date_range'])
         : (parentData?['date_range'] is Map
-            ? Map<String, dynamic>.from(parentData!['date_range'])
-            : null);
+              ? Map<String, dynamic>.from(parentData!['date_range'])
+              : null);
 
     final rawTime =
         raw['time'] ??
@@ -2236,10 +2242,9 @@ class DashboardController extends GetxController {
         raw['name'] ??
         raw['start_address'] ??
         raw['location_name'];
-    String locationStr =
-        (locRaw != null && locRaw.toString().trim().isNotEmpty)
-            ? locRaw.toString()
-            : 'N/A';
+    String locationStr = (locRaw != null && locRaw.toString().trim().isNotEmpty)
+        ? locRaw.toString()
+        : 'N/A';
 
     return {
       ...raw,

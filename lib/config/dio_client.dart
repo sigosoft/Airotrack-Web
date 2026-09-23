@@ -30,45 +30,12 @@ class DioClient {
           if (_token != null && _token!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $_token';
           }
-          debugPrint(
-            '==================== [DIO API REQUEST] ====================',
-          );
-          debugPrint('🌐 METHOD: ${options.method}');
-          debugPrint('🌐 URI: ${options.uri}');
-          debugPrint('🔑 TOKEN: ${_token ?? "NO TOKEN"}');
-          debugPrint('📋 HEADERS: ${options.headers}');
-          if (options.data != null) {
-            debugPrint('📦 REQUEST DATA: ${options.data}');
-          }
-          debugPrint(
-            '==========================================================',
-          );
           return handler.next(options);
         },
         onResponse: (response, handler) {
-          debugPrint(
-            '==================== [DIO API RESPONSE] ====================',
-          );
-          debugPrint('✅ STATUS CODE: ${response.statusCode}');
-          debugPrint('🌐 URI: ${response.requestOptions.uri}');
-          debugPrint('📦 RESPONSE DATA: ${response.data}');
-          debugPrint(
-            '==========================================================',
-          );
           return handler.next(response);
         },
         onError: (DioException e, handler) {
-          debugPrint(
-            '==================== [DIO API ERROR] ====================',
-          );
-          debugPrint('❌ TYPE: ${e.type}');
-          debugPrint('🌐 URI: ${e.requestOptions.uri}');
-          debugPrint('⚠️ STATUS CODE: ${e.response?.statusCode}');
-          debugPrint('💬 MESSAGE: ${e.message}');
-          debugPrint('📦 ERROR PAYLOAD: ${e.response?.data}');
-          debugPrint(
-            '==========================================================',
-          );
           return handler.next(e);
         },
       ),
