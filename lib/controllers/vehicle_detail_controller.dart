@@ -19,7 +19,8 @@ import 'dashboard_controller.dart';
 import 'home_controller.dart';
 
 class VehicleDetailController extends GetxController {
-  final RxInt selectedTopTab = (-1).obs; // -1: Vehicle Info Detail, 0: History, 1: Alerts, 2: Statistics
+  final RxInt selectedTopTab =
+      (-1).obs; // -1: Vehicle Info Detail, 0: History, 1: Alerts, 2: Statistics
   final RxBool isMapDialogVisible = false.obs;
   final RxBool isHistoryMapDialogVisible = false.obs;
 
@@ -118,10 +119,14 @@ class VehicleDetailController extends GetxController {
     }
   }
 
-  late final RxString startDateStr =
-      _formatInitialDate(DateTime.now(), isStart: true).obs;
-  late final RxString endDateStr =
-      _formatInitialDate(DateTime.now(), isStart: false).obs;
+  late final RxString startDateStr = _formatInitialDate(
+    DateTime.now(),
+    isStart: true,
+  ).obs;
+  late final RxString endDateStr = _formatInitialDate(
+    DateTime.now(),
+    isStart: false,
+  ).obs;
 
   final RxBool isLoading = false.obs;
   final RxBool isStatisticsLoading = false.obs;
@@ -162,7 +167,11 @@ class VehicleDetailController extends GetxController {
     todayOdoKm: '0',
     sensors: [
       SensorReadingItem(label: 'Battery', value: '-', iconType: 'battery'),
-      SensorReadingItem(label: 'Car Battery', value: '-', iconType: 'car_battery'),
+      SensorReadingItem(
+        label: 'Car Battery',
+        value: '-',
+        iconType: 'car_battery',
+      ),
       SensorReadingItem(label: 'Satellite', value: '-', iconType: 'satellite'),
       SensorReadingItem(label: 'Fuel', value: '-', iconType: 'fuel'),
       SensorReadingItem(label: 'Accuracy', value: '-', iconType: 'accuracy'),
@@ -183,16 +192,24 @@ class VehicleDetailController extends GetxController {
     if (Get.isRegistered<HomeController>()) {
       final homeCtrl = Get.find<HomeController>();
       if (homeCtrl.vehicles.isNotEmpty) {
-        final dashCtrl = Get.isRegistered<DashboardController>() ? Get.find<DashboardController>() : null;
-        final idx = (dashCtrl != null && dashCtrl.selectedVehicleIndex.value < homeCtrl.vehicles.length)
+        final dashCtrl = Get.isRegistered<DashboardController>()
+            ? Get.find<DashboardController>()
+            : null;
+        final idx =
+            (dashCtrl != null &&
+                dashCtrl.selectedVehicleIndex.value < homeCtrl.vehicles.length)
             ? dashCtrl.selectedVehicleIndex.value
             : 0;
         updateFromVehicle(homeCtrl.vehicles[idx]);
       }
       ever(homeCtrl.vehicles, (List<Vehicle> list) {
         if (list.isNotEmpty) {
-          final dashCtrl = Get.isRegistered<DashboardController>() ? Get.find<DashboardController>() : null;
-          final idx = (dashCtrl != null && dashCtrl.selectedVehicleIndex.value < list.length)
+          final dashCtrl = Get.isRegistered<DashboardController>()
+              ? Get.find<DashboardController>()
+              : null;
+          final idx =
+              (dashCtrl != null &&
+                  dashCtrl.selectedVehicleIndex.value < list.length)
               ? dashCtrl.selectedVehicleIndex.value
               : 0;
           updateFromVehicle(list[idx]);
@@ -267,16 +284,23 @@ class VehicleDetailController extends GetxController {
 
         if (currentPos != null && currentPos is Map) {
           final lat = double.tryParse(currentPos['latitude']?.toString() ?? '');
-          final lng = double.tryParse(currentPos['longitude']?.toString() ?? '');
-          final speed = double.tryParse(currentPos['speed']?.toString() ?? '0') ?? 0.0;
+          final lng = double.tryParse(
+            currentPos['longitude']?.toString() ?? '',
+          );
+          final speed =
+              double.tryParse(currentPos['speed']?.toString() ?? '0') ?? 0.0;
           final odo = currentPos['odometer']?.toString() ?? '0';
 
           vehicleDetail.update((val) {
             if (val != null) {
               vehicleDetail.value = VehicleDetailData(
-                vehicleNumber: currentPos['vehicle_number']?.toString() ?? currentPos['name']?.toString() ?? val.vehicleNumber,
+                vehicleNumber:
+                    currentPos['vehicle_number']?.toString() ??
+                    currentPos['name']?.toString() ??
+                    val.vehicleNumber,
                 odometerDigits: odo.padLeft(7, '0'),
-                timestamp: currentPos['device_time']?.toString() ?? val.timestamp,
+                timestamp:
+                    currentPos['device_time']?.toString() ?? val.timestamp,
                 distanceKm: val.distanceKm,
                 speedKmph: speed.toInt(),
                 coordinates: (lat != null && lng != null)
@@ -284,9 +308,14 @@ class VehicleDetailController extends GetxController {
                     : val.coordinates,
                 latitude: lat ?? val.latitude,
                 longitude: lng ?? val.longitude,
-                address: currentPos['address']?.toString() ?? currentPos['location']?.toString() ?? val.address,
-                deviceTime: currentPos['device_time']?.toString() ?? val.deviceTime,
-                serverTime: currentPos['server_time']?.toString() ?? val.serverTime,
+                address:
+                    currentPos['address']?.toString() ??
+                    currentPos['location']?.toString() ??
+                    val.address,
+                deviceTime:
+                    currentPos['device_time']?.toString() ?? val.deviceTime,
+                serverTime:
+                    currentPos['server_time']?.toString() ?? val.serverTime,
                 runningDuration: val.runningDuration,
                 idleDuration: val.idleDuration,
                 stoppedDuration: val.stoppedDuration,
@@ -333,14 +362,13 @@ class VehicleDetailController extends GetxController {
       isLoading.value = true;
       final response = await DioClient().post(
         ApiEndPoints.updateOdometer,
-        body: {
-          'imei': imei,
-          'odometer': odometer,
-        },
+        body: {'imei': imei, 'odometer': odometer},
       );
 
       if (response.data != null && response.data['status'] == true) {
-        AppToast.show(response.data['message']?.toString() ?? 'Odometer updated');
+        AppToast.show(
+          response.data['message']?.toString() ?? 'Odometer updated',
+        );
         vehicleDetail.update((val) {
           if (val != null) {
             vehicleDetail.value = VehicleDetailData(
@@ -368,7 +396,9 @@ class VehicleDetailController extends GetxController {
         });
         return true;
       } else {
-        final msg = response.data?['message']?.toString() ?? 'Failed to update odometer';
+        final msg =
+            response.data?['message']?.toString() ??
+            'Failed to update odometer';
         AppToast.show(msg, isError: true);
         return false;
       }
@@ -394,7 +424,8 @@ class VehicleDetailController extends GetxController {
           final dashCtrl = Get.isRegistered<DashboardController>()
               ? Get.find<DashboardController>()
               : null;
-          final idx = (dashCtrl != null &&
+          final idx =
+              (dashCtrl != null &&
                   dashCtrl.selectedVehicleIndex.value < home.vehicles.length)
               ? dashCtrl.selectedVehicleIndex.value
               : 0;
@@ -472,8 +503,12 @@ class VehicleDetailController extends GetxController {
     final targetImei = (imei != null && imei.isNotEmpty) ? imei : activeImei;
     if (targetImei.isEmpty) return;
 
-    final fDate = (fromDate != null && fromDate.isNotEmpty) ? fromDate : startDateStr.value;
-    final tDate = (toDate != null && toDate.isNotEmpty) ? toDate : endDateStr.value;
+    final fDate = (fromDate != null && fromDate.isNotEmpty)
+        ? fromDate
+        : startDateStr.value;
+    final tDate = (toDate != null && toDate.isNotEmpty)
+        ? toDate
+        : endDateStr.value;
 
     final queryParams = <String, dynamic>{
       'imei': targetImei,
@@ -481,7 +516,9 @@ class VehicleDetailController extends GetxController {
       'to_date': tDate,
     };
 
-    if (period != null && period.isNotEmpty && period.toLowerCase() != 'custom') {
+    if (period != null &&
+        period.isNotEmpty &&
+        period.toLowerCase() != 'custom') {
       queryParams['period'] = period;
     }
 
@@ -493,7 +530,8 @@ class VehicleDetailController extends GetxController {
       );
 
       // If 422 or status false occurs due to period parameter, retry without period parameter
-      if ((response.statusCode == 422 || (response.data is Map && response.data['status'] == false)) &&
+      if ((response.statusCode == 422 ||
+              (response.data is Map && response.data['status'] == false)) &&
           queryParams.containsKey('period')) {
         queryParams.remove('period');
         response = await DioClient().get(
@@ -517,51 +555,61 @@ class VehicleDetailController extends GetxController {
 
     final map = Map<String, dynamic>.from(data);
 
-    final routeLen = map['route_length']?.toString() ??
+    final routeLen =
+        map['route_length']?.toString() ??
         map['route_distance']?.toString() ??
         map['distance']?.toString() ??
         map['total_distance']?.toString() ??
         '0 km';
 
-    final moveDur = map['move_duration']?.toString() ??
+    final moveDur =
+        map['move_duration']?.toString() ??
         map['moving_duration']?.toString() ??
         map['moving_time']?.toString() ??
         '00:00:00';
 
-    final idleDur = map['idle_duration']?.toString() ??
+    final idleDur =
+        map['idle_duration']?.toString() ??
         map['idling_duration']?.toString() ??
         map['idle_time']?.toString() ??
         '00:00:00';
 
-    final stopDur = map['stop_duration']?.toString() ??
+    final stopDur =
+        map['stop_duration']?.toString() ??
         map['stopped_duration']?.toString() ??
         map['stop_time']?.toString() ??
         '00:00:00';
 
-    final stopCnt = map['stop_count']?.toString() ??
+    final stopCnt =
+        map['stop_count']?.toString() ??
         map['stops']?.toString() ??
         map['stopped_count']?.toString() ??
         '0';
 
-    final avgSpd = map['average_speed']?.toString() ??
+    final avgSpd =
+        map['average_speed']?.toString() ??
         map['avg_speed']?.toString() ??
         '0 kmph';
 
-    final topSpd = map['top_speed']?.toString() ??
+    final topSpd =
+        map['top_speed']?.toString() ??
         map['max_speed']?.toString() ??
         '0 kmph';
 
-    final overSpdCnt = map['over_speed_count']?.toString() ??
+    final overSpdCnt =
+        map['over_speed_count']?.toString() ??
         map['overspeed_count']?.toString() ??
         map['overspeed_events']?.toString() ??
         '0';
 
-    final engHrs = map['engine_hours']?.toString() ??
+    final engHrs =
+        map['engine_hours']?.toString() ??
         map['engine_duration']?.toString() ??
         map['engine_on_time']?.toString() ??
         '00:00:00';
 
-    final odo = map['odometer']?.toString() ??
+    final odo =
+        map['odometer']?.toString() ??
         map['odo']?.toString() ??
         map['today_odo']?.toString() ??
         '0 km';
@@ -579,7 +627,6 @@ class VehicleDetailController extends GetxController {
       'Odometer': odo.contains('km') ? odo : '$odo km',
     };
   }
-
 
   @override
   void onClose() {
@@ -707,7 +754,9 @@ class VehicleDetailController extends GetxController {
     _buildPlaybackSpeedSeries();
     placeMovingMarkerAtStart();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      fitHistoryRoute();
+      if (selectedTopTab.value == 0) {
+        fitHistoryRoute();
+      }
     });
   }
 
@@ -824,7 +873,10 @@ class VehicleDetailController extends GetxController {
       movingMarkerBearing.value = _getBearing(route[0], route[1]);
       traveledRoutePoints.assignAll([route.first]);
       try {
-        historyMapController.move(route.first, historyMapController.camera.zoom);
+        historyMapController.move(
+          route.first,
+          historyMapController.camera.zoom,
+        );
       } catch (_) {}
       if (wasPlaying) startMovingMarker();
       return;
@@ -864,7 +916,10 @@ class VehicleDetailController extends GetxController {
         traveledRoutePoints.assignAll([...passed, interpolated]);
 
         try {
-          historyMapController.move(interpolated, historyMapController.camera.zoom);
+          historyMapController.move(
+            interpolated,
+            historyMapController.camera.zoom,
+          );
         } catch (_) {}
 
         if (wasPlaying) startMovingMarker();
@@ -898,8 +953,11 @@ class VehicleDetailController extends GetxController {
         final endBearing = route.length >= 2
             ? _getBearing(route[route.length - 2], route.last)
             : prevBearing;
-        movingMarkerBearing.value =
-            _lerpBearing(prevBearing, endBearing, _bearingSmoothing);
+        movingMarkerBearing.value = _lerpBearing(
+          prevBearing,
+          endBearing,
+          _bearingSmoothing,
+        );
         playbackProgress.value = 1.0;
         traveledRoutePoints.assignAll(List<LatLng>.from(route));
         stopMovingMarker();
@@ -946,8 +1004,11 @@ class VehicleDetailController extends GetxController {
     movingMarkerPosition.value = interpolated;
     final targetBearing = _getBearing(a, b);
     final prevBearing = movingMarkerBearing.value ?? targetBearing;
-    movingMarkerBearing.value =
-        _lerpBearing(prevBearing, targetBearing, _bearingSmoothing);
+    movingMarkerBearing.value = _lerpBearing(
+      prevBearing,
+      targetBearing,
+      _bearingSmoothing,
+    );
     playbackProgress.value = _getProgressFromMarkerPosition(route);
 
     // Actively draw the route behind the moving vehicle!
@@ -1002,7 +1063,8 @@ class VehicleDetailController extends GetxController {
       covered += _distanceKm(points[i], points[i + 1]);
     }
     if (segmentIndex < points.length - 1) {
-      covered += segmentFraction *
+      covered +=
+          segmentFraction *
           _distanceKm(points[segmentIndex], points[segmentIndex + 1]);
     }
     return covered;
@@ -1015,7 +1077,8 @@ class VehicleDetailController extends GetxController {
     final lon2 = end.longitude * math.pi / 180;
     final dLon = lon2 - lon1;
     final y = math.sin(dLon) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) -
+    final x =
+        math.cos(lat1) * math.sin(lat2) -
         math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
     final bearing = math.atan2(y, x);
     return (bearing * 180 / math.pi + 360) % 360;
@@ -1032,7 +1095,8 @@ class VehicleDetailController extends GetxController {
     final dLon = (b.longitude - a.longitude) * math.pi / 180;
     final la1 = a.latitude * math.pi / 180;
     final la2 = b.latitude * math.pi / 180;
-    final x = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final x =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(la1) * math.cos(la2) * math.sin(dLon / 2) * math.sin(dLon / 2);
     final c = 2 * math.atan2(math.sqrt(x), math.sqrt(1 - x));
     return R * c;
@@ -1044,7 +1108,10 @@ class VehicleDetailController extends GetxController {
   // Live Tracking Real-Time Engine (WebSocket + Road Buffer + Motion Gliding)
   // ---------------------------------------------------------------------
 
-  Future<void> startLiveTracking(String imei, {bool reconnectOnly = false}) async {
+  Future<void> startLiveTracking(
+    String imei, {
+    bool reconnectOnly = false,
+  }) async {
     if (imei.isEmpty || _liveDisposed) return;
     activeImei = imei;
 
@@ -1100,10 +1167,15 @@ class VehicleDetailController extends GetxController {
         vehicleDetail.update((val) {
           if (val != null) {
             vehicleDetail.value = VehicleDetailData(
-              vehicleNumber: data.vehicleInfo?.vehicleNumber ?? val.vehicleNumber,
-              odometerDigits: odo.replaceAll(RegExp(r'[^0-9]'), '').padLeft(7, '0'),
+              vehicleNumber:
+                  data.vehicleInfo?.vehicleNumber ?? val.vehicleNumber,
+              odometerDigits: odo
+                  .replaceAll(RegExp(r'[^0-9]'), '')
+                  .padLeft(7, '0'),
               timestamp: pos.deviceTime ?? val.timestamp,
-              distanceKm: pos.kilometer != null ? '${pos.kilometer} km' : val.distanceKm,
+              distanceKm: pos.kilometer != null
+                  ? '${pos.kilometer} km'
+                  : val.distanceKm,
               speedKmph: speed.toInt(),
               coordinates: (lat != null && lng != null)
                   ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
@@ -1143,7 +1215,9 @@ class VehicleDetailController extends GetxController {
             _lastReportedSpeedKmh = speed;
             _lastInferredSpeedKmh = speed;
             _isMovingVehicle = speed > 0;
-            _glideSpeedMs = speed > 0 ? (speed / 3.6).clamp(0.0, _maxGlideSpeedMs) : 0.0;
+            _glideSpeedMs = speed > 0
+                ? (speed / 3.6).clamp(0.0, _maxGlideSpeedMs)
+                : 0.0;
             _gpsTrace
               ..clear()
               ..add(location);
@@ -1190,32 +1264,117 @@ class VehicleDetailController extends GetxController {
     isLiveTrackingConnected.value = connected;
   }
 
+  (double, double)? _readLatLngFromMap(Map<String, dynamic> data) {
+    Map<String, dynamic> map = data;
+    if (data['current_position'] is Map) {
+      map = Map<String, dynamic>.from(data['current_position']);
+    } else if (data['position'] is Map) {
+      map = Map<String, dynamic>.from(data['position']);
+    } else if (data['data'] is Map) {
+      map = Map<String, dynamic>.from(data['data']);
+    } else if (data['vehicle'] is Map) {
+      map = Map<String, dynamic>.from(data['vehicle']);
+    }
+
+    final lat = double.tryParse(
+      (map['latitude'] ?? map['lat'] ?? map['Latitude'])?.toString() ?? '',
+    );
+    final lng = double.tryParse(
+      (map['longitude'] ?? map['lng'] ?? map['lon'] ?? map['Longitude'])
+              ?.toString() ??
+          '',
+    );
+    if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) return null;
+    return (lat, lng);
+  }
+
+  num? _readSpeedFromMap(Map<String, dynamic> data) {
+    Map<String, dynamic> map = data;
+    if (data['current_position'] is Map) {
+      map = Map<String, dynamic>.from(data['current_position']);
+    } else if (data['position'] is Map) {
+      map = Map<String, dynamic>.from(data['position']);
+    } else if (data['data'] is Map) {
+      map = Map<String, dynamic>.from(data['data']);
+    }
+    final raw = map['speed'] ?? map['Speed'] ?? map['spd'];
+    if (raw is num) return raw;
+    return num.tryParse(raw?.toString() ?? '');
+  }
+
+  double? _readCourseFromMap(Map<String, dynamic> data) {
+    Map<String, dynamic> map = data;
+    if (data['current_position'] is Map) {
+      map = Map<String, dynamic>.from(data['current_position']);
+    } else if (data['position'] is Map) {
+      map = Map<String, dynamic>.from(data['position']);
+    } else if (data['data'] is Map) {
+      map = Map<String, dynamic>.from(data['data']);
+    }
+    final raw =
+        map['course'] ??
+        map['angle'] ??
+        map['heading'] ??
+        map['direction'] ??
+        map['bearing'];
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '');
+  }
+
   void _handleLiveDeviceUpdate(Map<String, dynamic> data) {
     if (_liveDisposed) return;
     try {
-      final pos = LiveCurrentPosition.fromJson(data);
-      final lat = double.tryParse(pos.latitude ?? '');
-      final lng = double.tryParse(pos.longitude ?? '');
-      if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) return;
+      final coords = _readLatLngFromMap(data);
+      if (coords == null) {
+        debugPrint('[LiveTrack] device update missing valid coords: $data');
+        return;
+      }
 
-      final speed = pos.speed ?? 0.0;
-      final odo = pos.odometer?.toString() ?? vehicleDetail.value.odometerDigits;
-      final status = pos.derivedStatus;
+      final lat = coords.$1;
+      final lng = coords.$2;
+      final speed = _readSpeedFromMap(data)?.toDouble() ?? 0.0;
+      final course = _readCourseFromMap(data);
+
+      debugPrint(
+        '[LiveTrack] Device Update -> Lat: $lat, Lng: $lng, Speed: $speed km/h, Course: $course',
+      );
+
+      Map<String, dynamic> map = data;
+      if (data['current_position'] is Map) {
+        map = Map<String, dynamic>.from(data['current_position']);
+      } else if (data['data'] is Map) {
+        map = Map<String, dynamic>.from(data['data']);
+      }
+
+      final odo =
+          map['odometer']?.toString() ?? vehicleDetail.value.odometerDigits;
+      final devTime =
+          map['devicetime']?.toString() ??
+          map['device_time']?.toString() ??
+          vehicleDetail.value.deviceTime;
+      final srvTime =
+          map['last_update']?.toString() ??
+          map['server_time']?.toString() ??
+          vehicleDetail.value.serverTime;
+      final km = map['kilometer']?.toString();
 
       vehicleDetail.update((val) {
         if (val != null) {
           vehicleDetail.value = VehicleDetailData(
             vehicleNumber: val.vehicleNumber,
-            odometerDigits: odo.replaceAll(RegExp(r'[^0-9]'), '').padLeft(7, '0'),
-            timestamp: pos.deviceTime ?? val.timestamp,
-            distanceKm: pos.kilometer != null ? '${pos.kilometer} km' : val.distanceKm,
+            odometerDigits: odo
+                .replaceAll(RegExp(r'[^0-9]'), '')
+                .padLeft(7, '0'),
+            timestamp: devTime.isNotEmpty ? devTime : val.timestamp,
+            distanceKm: km != null ? '$km km' : val.distanceKm,
             speedKmph: speed.toInt(),
-            coordinates: '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E',
+            coordinates:
+                '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E',
             latitude: lat,
             longitude: lng,
             address: val.address,
-            deviceTime: pos.deviceTime ?? val.deviceTime,
-            serverTime: pos.lastUpdate ?? val.serverTime,
+            deviceTime: devTime,
+            serverTime: srvTime,
             runningDuration: val.runningDuration,
             idleDuration: val.idleDuration,
             stoppedDuration: val.stoppedDuration,
@@ -1231,8 +1390,8 @@ class VehicleDetailController extends GetxController {
       _onLiveDevicePosition(
         LatLng(lat, lng),
         speed,
-        status: status,
-        courseDeg: pos.course,
+        status: speed > 0 ? 'Running' : 'Stopped',
+        courseDeg: course,
       );
     } catch (e) {
       debugPrint('[LiveTrack] Error handling live update: $e');
@@ -1261,12 +1420,13 @@ class VehicleDetailController extends GetxController {
       }
     }
 
-    _isMovingVehicle = reportedKmH > 0;
+    final movedM = previousGps == null
+        ? 0.0
+        : _calculateDistance(previousGps, location);
+    _isMovingVehicle = reportedKmH > 0 || inferredKmH > 1.5 || movedM > 2.0;
 
     if (!_isMovingVehicle) {
-      final gpsDeltaM =
-          previousGps == null ? 0.0 : _calculateDistance(previousGps, location);
-      if (previousGps != null && gpsDeltaM < _stoppedGpsDeadbandM) {
+      if (previousGps != null && movedM < _stoppedGpsDeadbandM) {
         _lastGpsTime = now;
         return;
       }
@@ -1275,6 +1435,9 @@ class VehicleDetailController extends GetxController {
           courseDeg >= 0 &&
           courseDeg <= 360) {
         _setLockedBearing(courseDeg % 360);
+      }
+      if (_pathLat == 0.0 && _pathLng == 0.0) {
+        _setPathPosition(location);
       }
       _lastAcceptedGps = location;
       _lastGpsTime = now;
@@ -1294,6 +1457,9 @@ class VehicleDetailController extends GetxController {
       courseDeg: courseDeg,
     );
 
+    if (_pathLat == 0.0 && _pathLng == 0.0) {
+      _setPathPosition(location);
+    }
     _lastAcceptedGps = location;
     _lastGpsTime = now;
     _liveTarget = location;
@@ -1361,7 +1527,7 @@ class VehicleDetailController extends GetxController {
 
       final alpha = 1.0 - math.exp(-dt / _speedTau);
       _glideSpeedMs += (target - _glideSpeedMs) * alpha;
-      if (_glideSpeedMs < _minRollSpeedMs && remaining > 1.0) {
+      if (_glideSpeedMs < _minRollSpeedMs && remaining > 0.5) {
         _glideSpeedMs = _minRollSpeedMs;
       }
       if (_glideSpeedMs < 0) _glideSpeedMs = 0;
@@ -1369,7 +1535,7 @@ class VehicleDetailController extends GetxController {
       var step = _glideSpeedMs * dt;
       if (step > remaining) step = remaining;
 
-      if (step > 0.0005) {
+      if (step > 0.0001) {
         if (_roadQueue.isNotEmpty) {
           _advanceAlongRoad(step);
         } else {
@@ -1452,11 +1618,16 @@ class VehicleDetailController extends GetxController {
 
     final pos = LatLng(_pathLat, _pathLng);
     final dist = _calculateDistance(pos, t);
-    if (dist < 1.0) return;
-    if (_isBehind(pos, t)) return;
+    if (dist < 0.2) return;
 
-    final bearing = _hasLiveHeading ? _lockedBearing : _getBearing(pos, t);
-    final s = math.min(step, dist * 0.6);
+    final bearing = _getBearing(pos, t);
+    _lockedBearing = bearing;
+    if (!_hasLiveHeading) {
+      _uiHeading = bearing;
+      _hasLiveHeading = true;
+    }
+
+    final s = math.min(step, dist);
     final next = _offsetMeters(pos, bearing, s);
     _pathLat = next.latitude;
     _pathLng = next.longitude;
@@ -1516,20 +1687,18 @@ class VehicleDetailController extends GetxController {
       if (traveled >= meters) break;
     }
 
-    if (pick == null) return null;
-    if (_calculateDistance(from, pick) < 1.5) return null;
+    pick ??= _roadQueue.last;
+    if (_calculateDistance(from, pick) < 0.2) return null;
     return _getBearing(from, pick);
   }
 
   void _setLockedBearing(double bearing) {
     bearing = _normalizeBearing(bearing);
+    _lockedBearing = bearing;
     if (!_hasLiveHeading) {
-      _lockedBearing = bearing;
       _uiHeading = bearing;
       _hasLiveHeading = true;
-      return;
     }
-    _lockedBearing = bearing;
   }
 
   void _updateHeadingFromMovement(
@@ -1537,63 +1706,50 @@ class VehicleDetailController extends GetxController {
     LatLng? previousGps,
     double? courseDeg,
   }) {
-    if (_roadQueue.length >= 2 && _hasLiveHeading) return;
-
-    double? movementBearing;
-    var movedM = 0.0;
-
-    if (previousGps != null) {
-      movedM = _calculateDistance(previousGps, location);
-      if (movedM >= _minGpsBearingMoveM) {
-        movementBearing = _getBearing(previousGps, location);
-      }
+    if (courseDeg != null && courseDeg >= 0 && courseDeg <= 360) {
+      _setLockedBearing(courseDeg % 360);
+      return;
     }
 
-    if (movementBearing == null && _pathLat != 0.0) {
+    double? movementBearing;
+    if (previousGps != null &&
+        _calculateDistance(previousGps, location) >= 2.0) {
+      movementBearing = _getBearing(previousGps, location);
+    } else if (_pathLat != 0.0) {
       final current = LatLng(_pathLat, _pathLng);
-      movedM = _calculateDistance(current, location);
-      if (movedM >= _minGpsBearingMoveM * 1.5) {
+      if (_calculateDistance(current, location) >= 2.0) {
         movementBearing = _getBearing(current, location);
       }
     }
 
     if (movementBearing != null) {
-      if (_hasLiveHeading) {
-        final flip =
-            _shortestBearingDelta(_lockedBearing, movementBearing).abs();
-        if (flip > 55.0 && movedM < 25.0) return;
-      }
       _setLockedBearing(movementBearing);
-      return;
-    }
-
-    if (!_hasLiveHeading &&
-        courseDeg != null &&
-        courseDeg >= 0 &&
-        courseDeg <= 360) {
-      _setLockedBearing(courseDeg % 360);
     }
   }
 
   void _publishLiveFrame({bool force = false}) {
     if (_pathLat == 0.0 && _pathLng == 0.0) return;
-    final point = LatLng(_pathLat + _corrLat, _pathLng + _corrLng);
+    // Anchor position strictly on the road polyline
+    final point = LatLng(_pathLat, _pathLng);
 
     liveMarkerPosition.value = point;
     liveMarkerBearing.value = _uiHeading;
 
-    if (isLiveLocked.value) {
-      _followLiveCamera(point);
-    }
+    _followLiveCamera(point);
   }
 
   void _followLiveCamera(LatLng point) {
     try {
-      var zoom = 15.0;
+      var zoom = 16.0;
       try {
         zoom = liveMapController.camera.zoom;
       } catch (_) {}
-      liveMapController.move(point, zoom);
+      if (zoom < 13.0) zoom = 16.0;
+
+      // Vertical offset so the car sits in the open visible top viewport above the bottom sheet
+      final latOffset = 0.0012 * math.pow(2, 15.0 - zoom).toDouble();
+      final target = LatLng(point.latitude - latOffset, point.longitude);
+      liveMapController.move(target, zoom);
     } catch (_) {}
   }
 
@@ -1604,26 +1760,10 @@ class VehicleDetailController extends GetxController {
     if (_pathLat == 0.0 && _pathLng == 0.0) return;
     if (_roadFetchInFlight) return;
 
-    final now = DateTime.now();
-    final queueEmpty = _roadQueue.length < 2;
-    final minGapMs = queueEmpty ? 250 : 700;
-    if (!force &&
-        !queueEmpty &&
-        _lastRoadFetchAt != null &&
-        now.difference(_lastRoadFetchAt!).inMilliseconds < minGapMs) {
-      return;
-    }
-
     final from = LatLng(_pathLat, _pathLng);
     final straightM = _calculateDistance(from, to);
+    if (straightM < 1.0 && !force) return;
 
-    if (straightM < _minRoadRouteMeters) return;
-    if (!queueEmpty && straightM < 15.0 && _remainingPathMeters(from) > 20.0) {
-      return;
-    }
-    if (_hasLiveHeading && _isBehind(from, to) && straightM < 50.0) return;
-
-    _lastRoadFetchAt = now;
     _roadFetchInFlight = true;
     final requestId = ++_routeRequestId;
     final fromPt = from;
@@ -1634,23 +1774,24 @@ class VehicleDetailController extends GetxController {
       try {
         List<LatLng> road = const [];
 
-        road = await _directionsService.getRoute(fromPt, toPt, smooth: false);
-
-        if (road.length < 2 && traceCopy.length >= 2) {
+        if (traceCopy.length >= 2) {
           road = await _directionsService.matchTrace(
             traceCopy,
-            radiusMeters: 25,
+            radiusMeters: 35,
           );
+        }
+
+        if (road.length < 2) {
+          road = await _directionsService.getRoute(fromPt, toPt, smooth: false);
         }
 
         if (_liveDisposed) return;
         if (requestId != _routeRequestId && _roadQueue.length >= 2) return;
-        if (road.length < 2) return;
-
-        final routeLenM = _pathLengthMeters(road);
-        if (straightM > 0.5 &&
-            routeLenM > straightM * 4.5 &&
-            routeLenM > 40.0) {
+        if (road.length < 2) {
+          if (_lastRoadCorridor.length >= 2) {
+            final snapped = _closestPointOnPolyline(toPt, _lastRoadCorridor);
+            _liveTarget = snapped;
+          }
           return;
         }
 
@@ -1660,20 +1801,18 @@ class VehicleDetailController extends GetxController {
 
         var prepared = _orientPathWithTravel(road);
         prepared = _decimatePath(prepared, _roadWaypointMinM);
-        final trimmed = _trimRouteToUpdate(prepared, toPt);
-        if (trimmed.length >= 2) prepared = trimmed;
         if (prepared.length < 2) return;
 
         liveRoadPolyline.assignAll(prepared);
         _adoptRoadQueue(prepared);
       } catch (e) {
-        debugPrint('[LiveTrack] Mapbox road fetch error: $e');
+        debugPrint('[LiveTrack] Road fetch error: $e');
       } finally {
         _roadFetchInFlight = false;
         final pending = _pendingRoadTarget;
         if (!_liveDisposed &&
             pending != null &&
-            _calculateDistance(pending, toPt) > _minRoadRouteMeters) {
+            _calculateDistance(pending, toPt) > 2.0) {
           _requestRoadPath(pending, force: _roadQueue.length < 2);
         }
       }
@@ -1683,22 +1822,10 @@ class VehicleDetailController extends GetxController {
   void _adoptRoadQueue(List<LatLng> path) {
     if (path.length < 2) return;
 
-    final published = LatLng(_pathLat + _corrLat, _pathLng + _corrLng);
-    final onNew = _closestPointOnPolyline(published, path);
+    final current = LatLng(_pathLat, _pathLng);
+    final onNew = _closestPointOnPolyline(current, path);
     final ahead = _trimRouteAhead(onNew, path);
     if (ahead.length < 2) return;
-
-    if (_roadQueue.length >= 2) {
-      final remainingNow = _remainingPathMeters(LatLng(_pathLat, _pathLng));
-      final newRemaining = _pathLengthMeters(ahead);
-      if (remainingNow > 20.0 &&
-          newRemaining + 1.0 < remainingNow &&
-          _calculateDistance(published, onNew) < 3.0) {
-        return;
-      }
-    }
-
-    final offsetM = _calculateDistance(published, onNew);
 
     _roadQueue
       ..clear()
@@ -1706,22 +1833,8 @@ class VehicleDetailController extends GetxController {
 
     _pathLat = onNew.latitude;
     _pathLng = onNew.longitude;
-
-    if (offsetM > _teleportCorrectionM) {
-      _corrLat = 0.0;
-      _corrLng = 0.0;
-      return;
-    }
-
-    var dLat = published.latitude - onNew.latitude;
-    var dLng = published.longitude - onNew.longitude;
-    if (offsetM > _maxCorrectionM && offsetM > 0) {
-      final k = _maxCorrectionM / offsetM;
-      dLat *= k;
-      dLng *= k;
-    }
-    _corrLat = dLat;
-    _corrLng = dLng;
+    _corrLat = 0.0;
+    _corrLng = 0.0;
   }
 
   double _pathLengthMeters(List<LatLng> path) {
@@ -1777,12 +1890,13 @@ class VehicleDetailController extends GetxController {
     final onSeg = bestIdx < path.length - 1
         ? _projectOnSegment(update, path[bestIdx], path[bestIdx + 1])
         : (bestIdx > 0
-            ? _projectOnSegment(update, path[bestIdx - 1], path[bestIdx])
-            : path[bestIdx]);
+              ? _projectOnSegment(update, path[bestIdx - 1], path[bestIdx])
+              : path[bestIdx]);
 
     final out = <LatLng>[];
-    final endIdx =
-        bestIdx < path.length - 1 ? bestIdx : math.max(0, bestIdx - 1);
+    final endIdx = bestIdx < path.length - 1
+        ? bestIdx
+        : math.max(0, bestIdx - 1);
     for (var i = 0; i <= endIdx; i++) {
       out.add(path[i]);
     }
@@ -1878,8 +1992,10 @@ class VehicleDetailController extends GetxController {
     final dx = bx - ax;
     final dy = by - ay;
     if (dx == 0 && dy == 0) return a;
-    final t = (((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy))
-        .clamp(0.0, 1.0);
+    final t = (((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)).clamp(
+      0.0,
+      1.0,
+    );
     return LatLng(ay + dy * t, ax + dx * t);
   }
 
@@ -1956,7 +2072,8 @@ class VehicleDetailController extends GetxController {
     final gpsStepM = _calculateDistance(previousGps, location);
     if (gpsStepM < 1.0) return true;
 
-    final gpsMovingBackward = !_isForwardOf(location, previousGps) &&
+    final gpsMovingBackward =
+        !_isForwardOf(location, previousGps) &&
         gpsStepM >= _reverseGpsStepMeters;
     return !gpsMovingBackward;
   }
@@ -1984,7 +2101,8 @@ class VehicleDetailController extends GetxController {
     const radius = 6371000.0;
     final dLat = (p2.latitude - p1.latitude) * math.pi / 180;
     final dLon = (p2.longitude - p1.longitude) * math.pi / 180;
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(p1.latitude * math.pi / 180) *
             math.cos(p2.latitude * math.pi / 180) *
             math.sin(dLon / 2) *
@@ -1994,18 +2112,17 @@ class VehicleDetailController extends GetxController {
 
   void recenterLiveMap() {
     isLiveLocked.value = true;
-    final pt = liveMarkerPosition.value ??
-        (vehicleDetail.value.latitude != null && vehicleDetail.value.longitude != null
-            ? LatLng(vehicleDetail.value.latitude!, vehicleDetail.value.longitude!)
+    final pt =
+        liveMarkerPosition.value ??
+        (vehicleDetail.value.latitude != null &&
+                vehicleDetail.value.longitude != null
+            ? LatLng(
+                vehicleDetail.value.latitude!,
+                vehicleDetail.value.longitude!,
+              )
             : null);
     if (pt != null) {
-      try {
-        var zoom = 15.0;
-        try {
-          zoom = liveMapController.camera.zoom;
-        } catch (_) {}
-        liveMapController.move(pt, zoom);
-      } catch (_) {}
+      _followLiveCamera(pt);
     }
   }
 

@@ -8,8 +8,13 @@ import 'send_command_dialog.dart';
 
 class VehicleInfoSidebar extends StatelessWidget {
   final VehicleDetailData data;
+  final ScrollController? scrollController;
 
-  const VehicleInfoSidebar({super.key, required this.data});
+  const VehicleInfoSidebar({
+    super.key,
+    required this.data,
+    this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +25,7 @@ class VehicleInfoSidebar extends StatelessWidget {
       width: isMobile ? double.infinity : 380,
       color: const Color(0xFFF4F6F9),
       child: SingleChildScrollView(
+        controller: scrollController,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -128,12 +134,51 @@ class VehicleInfoSidebar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Speedometer Gauge Asset Image (Speeds.png)
-                  Image.asset(
-                    AppAssets.speedsGauge,
+                  // Speedometer Gauge Asset Image with dynamic live speed value
+                  SizedBox(
                     width: 85,
                     height: 75,
-                    fit: BoxFit.contain,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Image.asset(
+                          AppAssets.speedsGauge,
+                          width: 85,
+                          height: 75,
+                          fit: BoxFit.contain,
+                        ),
+                        Positioned(
+                          bottom: 2,
+                          child: Container(
+                            color: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${data.speedKmph}',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const Text(
+                                  'Km/h',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

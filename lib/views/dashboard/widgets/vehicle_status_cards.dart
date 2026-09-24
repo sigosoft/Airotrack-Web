@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../constants/app_assets.dart';
 import '../../../models/dashboard_model.dart';
+import '../../../utils/custom_media_query.dart';
 
 class VehicleStatusCards extends StatelessWidget {
   final List<VehicleStatusSummary> summaryList;
@@ -9,8 +10,74 @@ class VehicleStatusCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = CustomMediaQuery.isMobile(context);
+
     return LayoutBuilder(
       builder: (context, constraints) {
+        final useHorizontalScroll = isMobile || constraints.maxWidth < 650;
+
+        if (useHorizontalScroll) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: summaryList.map((item) {
+                final color = Color(item.colorHex);
+
+                return Container(
+                  width: 86,
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        AppAssets.carImage,
+                        width: 20,
+                        height: 20,
+                        color: color,
+                      ),
+                      const SizedBox(height: 2),
+                      // Title
+                      Text(
+                        item.title,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF475467),
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                      ),
+                      const SizedBox(height: 2),
+                      // Count
+                      Text(
+                        '${item.count}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1D2939),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          );
+        }
+
         return Row(
           children: summaryList.map((item) {
             final color = Color(item.colorHex);
@@ -39,6 +106,7 @@ class VehicleStatusCards extends StatelessWidget {
                       height: 20,
                       color: color,
                     ),
+                    const SizedBox(height: 2),
                     // Title
                     Text(
                       item.title,
@@ -49,7 +117,6 @@ class VehicleStatusCards extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     // Count

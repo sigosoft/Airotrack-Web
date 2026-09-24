@@ -31,18 +31,19 @@ class HistoryViewContent extends StatelessWidget {
         final lng = detail.longitude ?? 76.325;
 
         final activeRoute = controller.getActiveRoutePoints();
-        final vehiclePos = controller.movingMarkerPosition.value ??
+        final vehiclePos =
+            controller.movingMarkerPosition.value ??
             (activeRoute.isNotEmpty
                 ? activeRoute.first
                 : (lat != 0 && lng != 0
-                    ? LatLng(lat, lng)
-                    : const LatLng(10.038, 76.325)));
+                      ? LatLng(lat, lng)
+                      : const LatLng(10.038, 76.325)));
         final flagPos = activeRoute.isNotEmpty ? activeRoute.last : null;
         final mapCenter = activeRoute.isNotEmpty
             ? activeRoute.first
             : (lat != 0 && lng != 0
-                ? LatLng(lat, lng)
-                : const LatLng(10.038, 76.325));
+                  ? LatLng(lat, lng)
+                  : const LatLng(10.038, 76.325));
 
         return Stack(
           children: [
@@ -86,18 +87,16 @@ class HistoryViewContent extends StatelessWidget {
                 // Dynamic Vehicle & Location Flag PNG Markers
                 MarkerLayer(
                   markers: [
-                    // Vehicle Marker (Straight upright, moving forward)
+                    // Vehicle Marker (aligned with route bearing)
                     Marker(
                       point: vehiclePos,
                       width: 44,
                       height: 44,
+                      alignment: Alignment.center,
                       child: GestureDetector(
                         onTap: controller.toggleHistoryMapDialog,
-                        child: Transform.flip(
-                          flipX: (controller.movingMarkerBearing.value ?? 90.0) >
-                                  180 &&
-                              (controller.movingMarkerBearing.value ?? 90.0) <
-                                  360,
+                        child: Transform.rotate(
+                          angle: (((controller.movingMarkerBearing.value ?? 90.0) - 90.0) * (math.pi / 180.0)),
                           child: Image.asset(
                             AppAssets.greenCar,
                             fit: BoxFit.contain,
@@ -113,7 +112,10 @@ class HistoryViewContent extends StatelessWidget {
                         height: 22,
                         child: GestureDetector(
                           onTap: controller.toggleHistoryMapDialog,
-                          child: Image.asset(AppAssets.flag, fit: BoxFit.contain),
+                          child: Image.asset(
+                            AppAssets.flag,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                   ],
@@ -441,7 +443,10 @@ class HistoryViewContent extends StatelessWidget {
               else
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 24,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),

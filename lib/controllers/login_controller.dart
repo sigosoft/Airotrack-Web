@@ -30,6 +30,7 @@ class LoginController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _checkExistingSession();
     phoneController = TextEditingController();
     passwordController = TextEditingController();
 
@@ -48,6 +49,16 @@ class LoginController extends GetxController {
         val?.password = passwordController.text;
       });
     });
+  }
+
+  Future<void> _checkExistingSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final token = prefs.getString('token');
+    if (isLoggedIn && token != null && token.isNotEmpty) {
+      await DioClient().updateToken(token);
+      Get.offAll(() => const DashboardView());
+    }
   }
 
   void setCountryCode(String code) {
@@ -170,13 +181,14 @@ class LoginController extends GetxController {
         }
 
         if (token != null && token.isNotEmpty) {
-          DioClient().updateToken(token);
+          await DioClient().updateToken(token);
           final prefs = await SharedPreferences.getInstance();
           final savedName = (displayName != null && displayName.isNotEmpty)
               ? displayName
               : phoneController.text.trim();
 
           await prefs.setBool('isLoggedIn', true);
+          await prefs.setString('token', token);
           await prefs.setString('username', savedName);
           await prefs.setString('user_phone', phoneController.text.trim());
 

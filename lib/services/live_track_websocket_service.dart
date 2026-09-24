@@ -214,15 +214,12 @@ class LiveTrackWebSocketService {
         return;
       }
 
-      // Check if event is vehicle device update
-      final targetEvent = _info?.eventName ?? 'device.update';
-      final isUpdate =
-          event == targetEvent ||
-          event == 'device.update' ||
-          event.contains('DeviceUpdate') ||
-          event.contains('device_update');
+      // Check if event is vehicle device update or custom event
+      final isSystemEvent = event.startsWith('pusher:') ||
+          event.startsWith('pusher_internal:');
 
-      if (isUpdate) {
+      if (!isSystemEvent) {
+        debugPrint('[LiveTrackWS] Received event: $event');
         var payload = decoded['data'];
         if (payload is String) {
           try {

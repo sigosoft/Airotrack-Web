@@ -24,7 +24,7 @@ void main() async {
   final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
   final token = prefs.getString('token');
   if (token != null && token.isNotEmpty) {
-    DioClient().updateToken(token);
+    await DioClient().updateToken(token);
   }
   runApp(AirotrackApp(isLoggedIn: isLoggedIn && token != null && token.isNotEmpty));
 }

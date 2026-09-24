@@ -4,6 +4,7 @@ import '../../../constants/app_assets.dart';
 import '../../../controllers/home_controller.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../models/tracking_model.dart';
+import '../../../utils/custom_media_query.dart';
 import '../vehicle_detail_map_view.dart';
 import 'vehicle_action_dialog.dart';
 
@@ -15,6 +16,7 @@ class TrackingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = CustomMediaQuery.isMobile(context);
     final statusColor = data.isGreenVehicle
         ? const Color(0xFF00A859)
         : const Color(0xFFE53935);
@@ -264,112 +266,210 @@ class TrackingCard extends StatelessWidget {
 
               const Divider(height: 1, color: Color(0xFFEAECF0)),
 
-              // Bottom Toolbar Row
-              Padding(
-                padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
-                child: Row(
+              // Bottom Toolbar
+              if (isMobile)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minWidth: constraints.maxWidth,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // 4 Action Square Buttons
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildSquareIconButton(
+                                Icons.ac_unit_rounded,
+                                data.isRunning
+                                    ? const Color(0xFF00A3E0)
+                                    : const Color(0xFF9E9E9E),
+                                isMobile: true,
                               ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  // 4 Action Square Buttons
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _buildSquareIconButton(
-                                        Icons.ac_unit_rounded,
-                                        data.isRunning
-                                            ? const Color(0xFF00A3E0)
-                                            : const Color(0xFF9E9E9E),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _buildSquareIconButton(
-                                        Icons.podcasts_rounded,
-                                        const Color(0xFF00A859),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _buildSquareIconButton(
-                                        Icons.power_settings_new_rounded,
-                                        data.isRunning
-                                            ? const Color(0xFF00A859)
-                                            : const Color(0xFFE53935),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _buildSquareIconButton(
-                                        Icons.build_rounded,
-                                        data.isGreenVehicle
-                                            ? const Color(0xFF00A3E0)
-                                            : const Color(0xFFE53935),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // Metric Pills Row
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _buildMetricPill(
-                                        icon: Icons.speed_rounded,
-                                        label: data.distanceKmText,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _buildMetricPill(
-                                        icon: Icons.calendar_month_outlined,
-                                        label: data.validityText,
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                              const SizedBox(width: 4),
+                              _buildSquareIconButton(
+                                Icons.podcasts_rounded,
+                                const Color(0xFF00A859),
+                                isMobile: true,
                               ),
-                            ),
-                          );
-                        },
+                              const SizedBox(width: 4),
+                              _buildSquareIconButton(
+                                Icons.power_settings_new_rounded,
+                                data.isRunning
+                                    ? const Color(0xFF00A859)
+                                    : const Color(0xFFE53935),
+                                isMobile: true,
+                              ),
+                              const SizedBox(width: 4),
+                              _buildSquareIconButton(
+                                Icons.build_rounded,
+                                data.isGreenVehicle
+                                    ? const Color(0xFF00A3E0)
+                                    : const Color(0xFFE53935),
+                                isMobile: true,
+                              ),
+                            ],
+                          ),
+                          // Metric Pills Row
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildMetricPill(
+                                icon: Icons.speed_rounded,
+                                label: data.distanceKmText,
+                                isMobile: true,
+                              ),
+                              const SizedBox(width: 4),
+                              _buildMetricPill(
+                                icon: Icons.calendar_month_outlined,
+                                label: data.validityText,
+                                isMobile: true,
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-
-                    // Bottom Right Action Blue Button (↗)
-                    InkWell(
-                      onTap:
-                          onArrowTap ??
-                          () {
-                            showDialog(
-                              context: context,
-                              builder: (context) =>
-                                  VehicleActionDialog(data: data),
-                            );
-                          },
-                      child: Container(
-                        width: 36,
-                        height: 32,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF00A3E0),
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(6),
-                            bottomRight: Radius.circular(6),
+                    // Next Line: Blue Arrow Button on Bottom Right
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: InkWell(
+                        onTap:
+                            onArrowTap ??
+                            () {
+                              showDialog(
+                                context: context,
+                                builder: (context) =>
+                                    VehicleActionDialog(data: data),
+                              );
+                            },
+                        child: Container(
+                          width: 38,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF00A3E0),
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(6),
+                              bottomRight: Radius.circular(8),
+                            ),
                           ),
-                        ),
-                        child: const Icon(
-                          Icons.north_east_rounded,
-                          color: Colors.white,
-                          size: 18,
+                          child: const Icon(
+                            Icons.north_east_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
                         ),
                       ),
                     ),
                   ],
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minWidth: constraints.maxWidth,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    // 4 Action Square Buttons
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildSquareIconButton(
+                                          Icons.ac_unit_rounded,
+                                          data.isRunning
+                                              ? const Color(0xFF00A3E0)
+                                              : const Color(0xFF9E9E9E),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _buildSquareIconButton(
+                                          Icons.podcasts_rounded,
+                                          const Color(0xFF00A859),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _buildSquareIconButton(
+                                          Icons.power_settings_new_rounded,
+                                          data.isRunning
+                                              ? const Color(0xFF00A859)
+                                              : const Color(0xFFE53935),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _buildSquareIconButton(
+                                          Icons.build_rounded,
+                                          data.isGreenVehicle
+                                              ? const Color(0xFF00A3E0)
+                                              : const Color(0xFFE53935),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Metric Pills Row
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildMetricPill(
+                                          icon: Icons.speed_rounded,
+                                          label: data.distanceKmText,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _buildMetricPill(
+                                          icon: Icons.calendar_month_outlined,
+                                          label: data.validityText,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Bottom Right Action Blue Button (↗)
+                      InkWell(
+                        onTap:
+                            onArrowTap ??
+                            () {
+                              showDialog(
+                                context: context,
+                                builder: (context) =>
+                                    VehicleActionDialog(data: data),
+                              );
+                            },
+                        child: Container(
+                          width: 36,
+                          height: 32,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF00A3E0),
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(6),
+                              bottomRight: Radius.circular(8),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.north_east_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -377,22 +477,33 @@ class TrackingCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSquareIconButton(IconData icon, Color color) {
+  Widget _buildSquareIconButton(
+    IconData icon,
+    Color color, {
+    bool isMobile = false,
+  }) {
     return Container(
-      width: 30,
-      height: 30,
+      width: isMobile ? 26 : 30,
+      height: isMobile ? 26 : 30,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: const Color(0xFFE4E7EC), width: 1),
       ),
-      child: Icon(icon, size: 15, color: color),
+      child: Icon(icon, size: isMobile ? 13 : 15, color: color),
     );
   }
 
-  Widget _buildMetricPill({required IconData icon, required String label}) {
+  Widget _buildMetricPill({
+    required IconData icon,
+    required String label,
+    bool isMobile = false,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 6 : 8,
+        vertical: isMobile ? 4 : 5,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(6),
@@ -401,14 +512,18 @@ class TrackingCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: const Color(0xFF475467)),
-          const SizedBox(width: 4),
+          Icon(
+            icon,
+            size: isMobile ? 11 : 12,
+            color: const Color(0xFF475467),
+          ),
+          SizedBox(width: isMobile ? 3 : 4),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 9.5,
+            style: TextStyle(
+              fontSize: isMobile ? 9 : 9.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF344054),
+              color: const Color(0xFF344054),
             ),
           ),
         ],

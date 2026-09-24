@@ -44,7 +44,7 @@ class DioClient {
 
   Dio get dio => _dio;
 
-  void updateToken(String token) async {
+  Future<void> updateToken(String token) async {
     _token = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);

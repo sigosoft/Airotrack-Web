@@ -286,6 +286,7 @@ class ProfileController extends GetxController {
     await prefs.remove('isLoggedIn');
     await prefs.remove('token');
     await prefs.remove('username');
+    await prefs.remove('user_phone');
     await DioClient().clearToken();
     AppToast.show('Signed out successfully');
     Get.offAll(() => const LoginView());
