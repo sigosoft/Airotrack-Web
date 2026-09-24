@@ -27,7 +27,9 @@ class DashboardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final DashboardController controller = Get.put(DashboardController());
+    final DashboardController controller = Get.isRegistered<DashboardController>()
+        ? Get.find<DashboardController>()
+        : Get.put(DashboardController());
 
     final isMobile = CustomMediaQuery.isMobile(context);
 
@@ -120,7 +122,9 @@ class DashboardView extends StatelessWidget {
 
                     if (selectedIndex == 1) {
                       // --- Tracking Screen Body ---
-                      final trackingController = Get.put(TrackingController());
+                      final trackingController = Get.isRegistered<TrackingController>()
+                          ? Get.find<TrackingController>()
+                          : Get.put(TrackingController());
 
                       return SingleChildScrollView(
                         physics: const BouncingScrollPhysics(),

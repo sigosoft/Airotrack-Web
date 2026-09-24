@@ -15,7 +15,9 @@ class RegisterView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Inject / retrieve RegisterController
-    final RegisterController controller = Get.put(RegisterController());
+    final RegisterController controller = Get.isRegistered<RegisterController>()
+        ? Get.find<RegisterController>()
+        : Get.put(RegisterController());
 
     final isMobile = CustomMediaQuery.isMobile(context);
     final isLandscape = CustomMediaQuery.isLandscape(context);

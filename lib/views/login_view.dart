@@ -15,7 +15,9 @@ class LoginView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Inject / retrieve GetX controller
-    final LoginController controller = Get.put(LoginController());
+    final LoginController controller = Get.isRegistered<LoginController>()
+        ? Get.find<LoginController>()
+        : Get.put(LoginController());
 
     final isMobile = CustomMediaQuery.isMobile(context);
     final isLandscape = CustomMediaQuery.isLandscape(context);

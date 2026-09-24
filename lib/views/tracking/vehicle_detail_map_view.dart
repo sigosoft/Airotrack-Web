@@ -15,9 +15,10 @@ class VehicleDetailMapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final VehicleDetailController controller = Get.put(
-      VehicleDetailController(),
-    );
+    final VehicleDetailController controller =
+        Get.isRegistered<VehicleDetailController>()
+            ? Get.find<VehicleDetailController>()
+            : Get.put(VehicleDetailController());
     final isMobile = CustomMediaQuery.isMobile(context);
 
     return Scaffold(

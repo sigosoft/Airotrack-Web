@@ -14,8 +14,14 @@ class TrackingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TrackingController controller = Get.put(TrackingController());
-    final DashboardController dashboardController = Get.put(DashboardController());
+    final TrackingController controller =
+        Get.isRegistered<TrackingController>()
+            ? Get.find<TrackingController>()
+            : Get.put(TrackingController());
+    final DashboardController dashboardController =
+        Get.isRegistered<DashboardController>()
+            ? Get.find<DashboardController>()
+            : Get.put(DashboardController());
 
     final isMobile = CustomMediaQuery.isMobile(context);
 

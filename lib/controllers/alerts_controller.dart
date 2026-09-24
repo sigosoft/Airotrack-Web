@@ -51,7 +51,8 @@ class AlertsController extends GetxController {
     if (Get.isRegistered<DashboardController>()) {
       final dashController = Get.find<DashboardController>();
       if (dashController.homeController.vehicles.isNotEmpty) {
-        final idx = dashController.selectedVehicleIndex.value <
+        final idx =
+            dashController.selectedVehicleIndex.value <
                 dashController.homeController.vehicles.length
             ? dashController.selectedVehicleIndex.value
             : 0;

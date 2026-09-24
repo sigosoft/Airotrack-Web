@@ -129,8 +129,6 @@ class _EngineHoursPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-
     final axisPaint = Paint()
       ..color = const Color(0xFFD0D5DD)
       ..strokeWidth = 1;
@@ -139,7 +137,10 @@ class _EngineHoursPainter extends CustomPainter {
     canvas.drawLine(Offset(0, 0), Offset(0, size.height), axisPaint);
     canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), axisPaint);
 
-    final double stepX = size.width / (points.length - 1);
+    if (points.isEmpty) return;
+
+    final double stepX =
+        points.length > 1 ? size.width / (points.length - 1) : size.width;
     final maxVal = 24.0;
 
     final path = Path();

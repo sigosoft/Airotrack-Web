@@ -69,7 +69,9 @@ class DashboardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    homeController = Get.put(HomeController());
+    homeController = Get.isRegistered<HomeController>()
+        ? Get.find<HomeController>()
+        : Get.put(HomeController());
 
     ever(homeController.vehicles, (_) {
       _updateDashboardData();
@@ -151,8 +153,6 @@ class DashboardController extends GetxController {
         homeController.vehicles.where((v) => v.status == 'Inactive').length;
 
     List<VehicleItem> items = [];
-    List<EngineHourDataPoint> dynamicEngineHours = [];
-    List<TravelDistanceDataPoint> dynamicTravelDistance = [];
 
     for (int i = 0; i < homeController.vehicles.length; i++) {
       final v = homeController.vehicles[i];
@@ -164,34 +164,6 @@ class DashboardController extends GetxController {
           isSelected: i == selectedVehicleIndex.value,
         ),
       );
-
-      if (i < 7) {
-        final distNum =
-            double.tryParse(v.todayKm.replaceAll(RegExp(r'[^0-9.]'), '')) ??
-            0.0;
-        double hoursNum = 0.0;
-        final dur = v.statusDuration.toLowerCase();
-        if (dur.contains('h')) {
-          final parts = dur.split('h');
-          hoursNum =
-              double.tryParse(parts[0].replaceAll(RegExp(r'[^0-9.]'), '')) ??
-              0.0;
-        } else {
-          hoursNum =
-              double.tryParse(dur.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
-        }
-
-        final label = v.plateNumber.length > 5
-            ? v.plateNumber.substring(v.plateNumber.length - 4)
-            : 'V${i + 1}';
-
-        dynamicEngineHours.add(
-          EngineHourDataPoint(date: label, hours: hoursNum.clamp(0.0, 24.0)),
-        );
-        dynamicTravelDistance.add(
-          TravelDistanceDataPoint(date: label, distanceKm: distNum),
-        );
-      }
     }
 
     dashboardData.value = DashboardModel(
@@ -241,12 +213,8 @@ class DashboardController extends GetxController {
         ),
       ],
       vehicleList: items.isNotEmpty ? items : dashboardData.value.vehicleList,
-      engineHoursData: dynamicEngineHours.isNotEmpty
-          ? dynamicEngineHours
-          : dashboardData.value.engineHoursData,
-      travelDistanceData: dynamicTravelDistance.isNotEmpty
-          ? dynamicTravelDistance
-          : dashboardData.value.travelDistanceData,
+      engineHoursData: dashboardData.value.engineHoursData,
+      travelDistanceData: dashboardData.value.travelDistanceData,
     );
 
     // Sync selected vehicle to VehicleDetailController
@@ -283,6 +251,31 @@ class DashboardController extends GetxController {
     } else if (index == 6) {
       fetchGeofenceReports();
     }
+  }
+
+  static List<EngineHourDataPoint> _getInitialEngineHours() {
+    final now = DateTime.now();
+    return List.generate(7, (i) {
+      final d = now.subtract(Duration(days: 6 - i));
+      return EngineHourDataPoint(
+        date:
+            "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}",
+        hours: 0.0,
+      );
+    });
+  }
+
+  static List<TravelDistanceDataPoint> _getInitialTravelDistance() {
+    final now = DateTime.now();
+    return List.generate(7, (i) {
+      final d = now.subtract(Duration(days: 6 - i));
+      return TravelDistanceDataPoint(
+        date:
+            "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}",
+        distanceKm: 0.0,
+        maxKm: 144.0,
+      );
+    });
   }
 
   final Rx<DashboardModel> dashboardData = DashboardModel(
@@ -332,8 +325,8 @@ class DashboardController extends GetxController {
       ),
     ],
     vehicleList: [],
-    engineHoursData: [],
-    travelDistanceData: [],
+    engineHoursData: _getInitialEngineHours(),
+    travelDistanceData: _getInitialTravelDistance(),
   ).obs;
 
   void selectMenu(int index) {

@@ -13,8 +13,14 @@ class NotificationView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final NotificationController controller = Get.put(NotificationController());
-    final DashboardController dashboardController = Get.put(DashboardController());
+    final NotificationController controller =
+        Get.isRegistered<NotificationController>()
+            ? Get.find<NotificationController>()
+            : Get.put(NotificationController());
+    final DashboardController dashboardController =
+        Get.isRegistered<DashboardController>()
+            ? Get.find<DashboardController>()
+            : Get.put(DashboardController());
 
     final isMobile = CustomMediaQuery.isMobile(context);
 
