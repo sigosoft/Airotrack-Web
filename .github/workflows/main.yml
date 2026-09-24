@@ -1,0 +1,64 @@
+name: Deploy Airotrack Web
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the latest source
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # 2. Install the required Flutter version
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.9
+          channel: stable
+          cache: true
+
+      # 3. Verify Flutter
+      - name: Verify Flutter
+        run: flutter --version
+
+      # 4. Install dependencies
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 5. Build first
+      # If the build fails, nothing is deployed to production.
+      - name: Build Flutter Web
+        run: flutter build web --release
+
+      # 6. Configure SSH
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p 22 "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      # 7. Deploy source code
+      - name: Deploy source code
+        run: |
+          rsync -az --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.dart_tool/' \
+            --exclude='build/' \
+            -e "ssh -p 22" \
+            ./ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/Airotrack-Web/"
+
+      # 8. Deploy compiled Flutter web build
+      - name: Deploy Web Build
+        run: |
+          rsync -az --delete \
+            -e "ssh -p 22" \
+            build/web/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/Airotrack-Web/build/web/"
