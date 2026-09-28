@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:airotrack_web/utils/custom_media_query.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -127,7 +126,7 @@ class TrackingMapContainer extends StatelessWidget {
 
                     return MarkerLayer(
                       markers: [
-                        // Current Vehicle Marker (Green Car.png aligned with road heading)
+                        // Current Vehicle Marker (Green Car.png upright)
                         Marker(
                           point: vehiclePos,
                           width: 44,
@@ -135,12 +134,9 @@ class TrackingMapContainer extends StatelessWidget {
                           alignment: Alignment.center,
                           child: GestureDetector(
                             onTap: controller.toggleMapDialog,
-                            child: Transform.rotate(
-                              angle: (bearing - 90.0) * (math.pi / 180.0),
-                              child: Image.asset(
-                                AppAssets.greenCar,
-                                fit: BoxFit.contain,
-                              ),
+                            child: Image.asset(
+                              AppAssets.greenCar,
+                              fit: BoxFit.contain,
                             ),
                           ),
                         ),
