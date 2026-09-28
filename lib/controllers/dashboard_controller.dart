@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ class DashboardController extends GetxController {
   final RxInt selectedMenuIndex = 0.obs;
   final RxInt selectedVehicleIndex = 0.obs;
   final RxBool isLoading = false.obs;
+  Timer? _dashboardAutoUpdateTimer;
 
   final RxBool isReportsExpanded = false.obs;
   final RxInt selectedReportSubIndex = 0.obs;
@@ -85,6 +87,18 @@ class DashboardController extends GetxController {
 
     _loadUserName();
     fetchDashboardApi();
+    _startDashboardAutoUpdate();
+  }
+
+  void _startDashboardAutoUpdate() {
+    _dashboardAutoUpdateTimer?.cancel();
+    _dashboardAutoUpdateTimer = Timer.periodic(const Duration(seconds: 15), (
+      _,
+    ) {
+      if (selectedMenuIndex.value == 0 && !isLoading.value) {
+        fetchDashboardApi(isSilent: true);
+      }
+    });
   }
 
   Future<void> _loadUserName() async {
@@ -348,9 +362,10 @@ class DashboardController extends GetxController {
     String? fromDate,
     String? toDate,
     String? days,
+    bool isSilent = false,
   }) async {
     try {
-      isLoading.value = true;
+      if (!isSilent) isLoading.value = true;
 
       String selectedImei = imei ?? '';
       if (selectedImei.isEmpty && homeController.vehicles.isNotEmpty) {
@@ -397,7 +412,7 @@ class DashboardController extends GetxController {
     } catch (e) {
       debugPrint('Error fetching dashboard data: $e');
     } finally {
-      isLoading.value = false;
+      if (!isSilent) isLoading.value = false;
     }
   }
 
@@ -2293,5 +2308,11 @@ class DashboardController extends GetxController {
       'time': timeStr,
       'location': locationStr,
     };
+  }
+
+  @override
+  void onClose() {
+    _dashboardAutoUpdateTimer?.cancel();
+    super.onClose();
   }
 }

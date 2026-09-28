@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:airotrack_web/utils/custom_media_query.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -124,9 +125,12 @@ class TrackingMapContainer extends StatelessWidget {
                         currentVehiclePosition;
                     final bearing = controller.liveMarkerBearing.value;
 
+                    final isStopped =
+                        detail.speedKmph <= 0 || !controller.isLiveMoving.value;
+
                     return MarkerLayer(
                       markers: [
-                        // Current Vehicle Marker (Green Car.png upright)
+                        // Current Vehicle Marker (Normal upright when stopped/resting, aligned with moving direction when moving)
                         Marker(
                           point: vehiclePos,
                           width: 44,
@@ -134,10 +138,18 @@ class TrackingMapContainer extends StatelessWidget {
                           alignment: Alignment.center,
                           child: GestureDetector(
                             onTap: controller.toggleMapDialog,
-                            child: Image.asset(
-                              AppAssets.greenCar,
-                              fit: BoxFit.contain,
-                            ),
+                            child: isStopped
+                                ? Image.asset(
+                                    AppAssets.greenCar,
+                                    fit: BoxFit.contain,
+                                  )
+                                : Transform.rotate(
+                                    angle: (bearing - 90.0) * (math.pi / 180.0),
+                                    child: Image.asset(
+                                      AppAssets.greenCar,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],

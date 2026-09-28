@@ -27,6 +27,7 @@ class VehicleDetailController extends GetxController {
   // Live Tracking Motion & Real-Time Engine
   final Rxn<LatLng> liveMarkerPosition = Rxn<LatLng>();
   final RxDouble liveMarkerBearing = 0.0.obs;
+  final RxBool isLiveMoving = false.obs;
   final RxBool isLiveTrackingConnected = false.obs;
   final RxBool isLiveLocked = true.obs;
   final RxList<LatLng> liveRoadPolyline = <LatLng>[].obs;
@@ -1215,6 +1216,7 @@ class VehicleDetailController extends GetxController {
             _lastReportedSpeedKmh = speed;
             _lastInferredSpeedKmh = speed;
             _isMovingVehicle = speed > 0;
+            isLiveMoving.value = speed > 0;
             _glideSpeedMs = speed > 0
                 ? (speed / 3.6).clamp(0.0, _maxGlideSpeedMs)
                 : 0.0;
@@ -1424,6 +1426,7 @@ class VehicleDetailController extends GetxController {
         ? 0.0
         : _calculateDistance(previousGps, location);
     _isMovingVehicle = reportedKmH > 0 || inferredKmH > 1.5 || movedM > 2.0;
+    isLiveMoving.value = _isMovingVehicle;
 
     if (!_isMovingVehicle) {
       if (previousGps != null && movedM < _stoppedGpsDeadbandM) {
@@ -1477,6 +1480,7 @@ class VehicleDetailController extends GetxController {
     _lastReportedSpeedKmh = speedKmH;
     _lastInferredSpeedKmh = speedKmH;
     _isMovingVehicle = speedKmH > 0;
+    isLiveMoving.value = speedKmH > 0;
     _requestRoadPath(location, force: true);
     _publishLiveFrame(force: true);
   }
@@ -1739,6 +1743,7 @@ class VehicleDetailController extends GetxController {
   }
 
   void _followLiveCamera(LatLng point) {
+    if (!isLiveLocked.value) return;
     try {
       var zoom = 16.0;
       try {
@@ -1746,10 +1751,7 @@ class VehicleDetailController extends GetxController {
       } catch (_) {}
       if (zoom < 13.0) zoom = 16.0;
 
-      // Vertical offset so the car sits in the open visible top viewport above the bottom sheet
-      final latOffset = 0.0012 * math.pow(2, 15.0 - zoom).toDouble();
-      final target = LatLng(point.latitude - latOffset, point.longitude);
-      liveMapController.move(target, zoom);
+      liveMapController.move(point, zoom);
     } catch (_) {}
   }
 
@@ -1772,18 +1774,11 @@ class VehicleDetailController extends GetxController {
 
     () async {
       try {
-        List<LatLng> road = const [];
-
-        if (traceCopy.length >= 2) {
-          road = await _directionsService.matchTrace(
-            traceCopy,
-            radiusMeters: 35,
-          );
-        }
-
-        if (road.length < 2) {
-          road = await _directionsService.getRoute(fromPt, toPt, smooth: false);
-        }
+        final road = await _directionsService.getRoute(
+          fromPt,
+          toPt,
+          smooth: false,
+        );
 
         if (_liveDisposed) return;
         if (requestId != _routeRequestId && _roadQueue.length >= 2) return;
@@ -1799,9 +1794,8 @@ class VehicleDetailController extends GetxController {
           ..clear()
           ..addAll(road);
 
-        var prepared = _orientPathWithTravel(road);
-        prepared = _decimatePath(prepared, _roadWaypointMinM);
-        if (prepared.length < 2) return;
+        var prepared = _decimatePath(road, _roadWaypointMinM);
+        if (prepared.length < 2) prepared = road;
 
         liveRoadPolyline.assignAll(prepared);
         _adoptRoadQueue(prepared);
@@ -1921,31 +1915,6 @@ class VehicleDetailController extends GetxController {
   }
 
   List<LatLng> _orientPathWithTravel(List<LatLng> path) {
-    if (path.length < 2) return path;
-
-    final pathBearing = _pathBearingOverMeters(path, 30.0);
-    if (pathBearing == null) return path;
-
-    double? travelBearing;
-    if (_gpsTrace.length >= 2) {
-      final prev = _gpsTrace[_gpsTrace.length - 2];
-      final curr = _gpsTrace.last;
-      if (_calculateDistance(prev, curr) >= 5.0) {
-        travelBearing = _getBearing(prev, curr);
-      }
-    }
-    travelBearing ??= _hasLiveHeading ? _lockedBearing : null;
-    if (travelBearing == null) return path;
-
-    final vsTravel = _shortestBearingDelta(travelBearing, pathBearing).abs();
-    if (vsTravel <= 100.0) return path;
-
-    final reversed = path.reversed.toList();
-    final revBearing = _pathBearingOverMeters(reversed, 30.0);
-    if (revBearing == null) return path;
-
-    final vsRev = _shortestBearingDelta(travelBearing, revBearing).abs();
-    if (vsRev + 25.0 < vsTravel) return reversed;
     return path;
   }
 

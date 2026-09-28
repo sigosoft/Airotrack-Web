@@ -87,7 +87,7 @@ class HistoryViewContent extends StatelessWidget {
                 // Dynamic Vehicle & Location Flag PNG Markers
                 MarkerLayer(
                   markers: [
-                    // Vehicle Marker (Upright)
+                    // Vehicle Marker (Normal upright when stopped/resting, aligned with moving direction when playing)
                     Marker(
                       point: vehiclePos,
                       width: 44,
@@ -95,10 +95,18 @@ class HistoryViewContent extends StatelessWidget {
                       alignment: Alignment.center,
                       child: GestureDetector(
                         onTap: controller.toggleHistoryMapDialog,
-                        child: Image.asset(
-                          AppAssets.greenCar,
-                          fit: BoxFit.contain,
-                        ),
+                        child: !controller.isPlaying.value
+                            ? Image.asset(
+                                AppAssets.greenCar,
+                                fit: BoxFit.contain,
+                              )
+                            : Transform.rotate(
+                                angle: (((controller.movingMarkerBearing.value ?? 90.0) - 90.0) * (math.pi / 180.0)),
+                                child: Image.asset(
+                                  AppAssets.greenCar,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
                       ),
                     ),
                     // Location Flag Marker

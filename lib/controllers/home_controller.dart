@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,7 @@ class HomeController extends GetxController {
   final RxInt selectedIndex = 1.obs;
   final ScrollController scrollController = ScrollController();
   int currentPage = 1;
+  Timer? _autoUpdateTimer;
 
   // Status counts
   final totalCount = "0".obs;
@@ -66,6 +68,7 @@ class HomeController extends GetxController {
   void onInit() {
     super.onInit();
     _initializeAndFetch();
+    _startAutoUpdate();
     scrollController.addListener(() {
       try {
         if (!scrollController.hasClients) return;
@@ -81,6 +84,15 @@ class HomeController extends GetxController {
     });
   }
 
+  void _startAutoUpdate() {
+    _autoUpdateTimer?.cancel();
+    _autoUpdateTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!isLoading.value && !isMoreLoading.value) {
+        fetchVehicles(type: selectedType.value, isSilent: true);
+      }
+    });
+  }
+
   Future<void> _initializeAndFetch() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
@@ -92,13 +104,15 @@ class HomeController extends GetxController {
 
   final selectedType = RxnInt();
 
-  Future<void> fetchVehicles({int? type}) async {
+  Future<void> fetchVehicles({int? type, bool isSilent = false}) async {
     try {
       selectedType.value = type;
-      currentPage = 1;
-      hasMore.value = true;
-      isLoading.value = true;
-      errorMessage.value = '';
+      if (!isSilent) {
+        currentPage = 1;
+        hasMore.value = true;
+        isLoading.value = true;
+        errorMessage.value = '';
+      }
 
       final response = await DioClient().get(
         ApiEndPoints.home,
@@ -236,6 +250,7 @@ class HomeController extends GetxController {
 
   @override
   void onClose() {
+    _autoUpdateTimer?.cancel();
     scrollController.dispose();
     super.onClose();
   }
