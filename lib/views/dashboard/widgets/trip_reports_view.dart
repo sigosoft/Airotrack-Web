@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
 import '../../../controllers/dashboard_controller.dart';
+import '../../../utils/report_exporter.dart';
 import 'trip_detail_map_view.dart';
 
 class TripReportsView extends StatefulWidget {
@@ -74,53 +75,69 @@ class _TripReportsViewState extends State<TripReportsView> {
                     children: [
                       Obx(
                         () => _buildDatePickerBox(
+                          context,
                           controller.reportStartDate.value,
+                          true,
+                          controller,
+                          () => controller.fetchTripReports(),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Obx(
                         () => _buildDatePickerBox(
+                          context,
                           controller.reportEndDate.value,
+                          false,
+                          controller,
+                          () => controller.fetchTripReports(),
                         ),
                       ),
                       const SizedBox(width: 8),
                       // Yellow Document Export Button with Blue Download Badge
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: const Color(0xFFD0D5DD),
-                            width: 1,
-                          ),
+                      InkWell(
+                        onTap: () => ReportExporter.exportTripReport(
+                          items: controller.tripReports,
+                          startDate: controller.reportStartDate.value,
+                          endDate: controller.reportEndDate.value,
                         ),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            const Icon(
-                              Icons.description_outlined,
-                              size: 20,
-                              color: Color(0xFFF59E0B),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFFD0D5DD),
+                              width: 1,
                             ),
-                            Positioned(
-                              right: 2,
-                              bottom: 2,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF00A3E0),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.arrow_downward_rounded,
-                                  size: 8,
-                                  color: Colors.white,
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              const Icon(
+                                Icons.description_outlined,
+                                size: 20,
+                                color: Color(0xFFF59E0B),
+                              ),
+                              Positioned(
+                                right: 2,
+                                bottom: 2,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF00A3E0),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.arrow_downward_rounded,
+                                    size: 8,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -546,32 +563,134 @@ class _TripReportsViewState extends State<TripReportsView> {
     );
   }
 
-  Widget _buildDatePickerBox(String dateStr) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.calendar_month_outlined,
-            size: 15,
-            color: Color(0xFF667085),
+  DateTime _parseDate(String dateStr) {
+    try {
+      final clean = dateStr.trim();
+      final firstPart = clean.split(' ').first;
+      final parts = firstPart.split('-');
+      if (parts.length == 3) {
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+    } catch (_) {}
+    return DateTime.now();
+  }
+
+  Widget _buildDatePickerBox(
+    BuildContext context,
+    String dateStr,
+    bool isStart,
+    DashboardController controller,
+    VoidCallback onDateChanged,
+  ) {
+    return InkWell(
+      onTap: () async {
+        final initial = _parseDate(dateStr);
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: initial,
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: const ColorScheme.light(
+                  primary: Color(0xFF00A3E0),
+                  onPrimary: Colors.white,
+                  onSurface: Color(0xFF1D2939),
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+        if (picked != null) {
+          final day = picked.day.toString().padLeft(2, '0');
+          final month = picked.month.toString().padLeft(2, '0');
+          final year = picked.year.toString();
+          if (isStart) {
+            controller.reportStartDate.value = '$day-$month-$year 12:00 AM';
+            final endDt = _parseDate(controller.reportEndDate.value);
+            if (picked.isAfter(endDt)) {
+              controller.reportEndDate.value = '$day-$month-$year 11:59 PM';
+            }
+          } else {
+            controller.reportEndDate.value = '$day-$month-$year 11:59 PM';
+            final startDt = _parseDate(controller.reportStartDate.value);
+            if (picked.isBefore(startDt)) {
+              controller.reportStartDate.value = '$day-$month-$year 12:00 AM';
+            }
+          }
+          onDateChanged();
+        }
+      },
+      onLongPress: () async {
+        final sDt = _parseDate(controller.reportStartDate.value);
+        final eDt = _parseDate(controller.reportEndDate.value);
+        final pickedRange = await showDateRangePicker(
+          context: context,
+          initialDateRange: DateTimeRange(
+            start: sDt.isBefore(eDt) ? sDt : eDt,
+            end: eDt.isAfter(sDt) ? eDt : sDt,
           ),
-          const SizedBox(width: 6),
-          Text(
-            dateStr,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF344054),
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: const ColorScheme.light(
+                  primary: Color(0xFF00A3E0),
+                  onPrimary: Colors.white,
+                  onSurface: Color(0xFF1D2939),
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+        if (pickedRange != null) {
+          final sDay = pickedRange.start.day.toString().padLeft(2, '0');
+          final sMonth = pickedRange.start.month.toString().padLeft(2, '0');
+          final sYear = pickedRange.start.year.toString();
+
+          final eDay = pickedRange.end.day.toString().padLeft(2, '0');
+          final eMonth = pickedRange.end.month.toString().padLeft(2, '0');
+          final eYear = pickedRange.end.year.toString();
+
+          controller.reportStartDate.value = '$sDay-$sMonth-$sYear 12:00 AM';
+          controller.reportEndDate.value = '$eDay-$eMonth-$eYear 11:59 PM';
+          onDateChanged();
+        }
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.calendar_month_outlined,
+              size: 15,
+              color: Color(0xFF667085),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              dateStr,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF344054),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

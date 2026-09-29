@@ -741,6 +741,77 @@ class VehicleDetailController extends GetxController {
     return '0000000';
   }
 
+  bool _sensorKeysLogged = false;
+
+  /// All values from the response in one flat, lower-case-keyed map,
+  /// including nested maps where trackers usually put sensor data.
+  Map<String, dynamic> _sensorLookup(Map<String, dynamic>? raw) {
+    final out = <String, dynamic>{};
+    void addAll(dynamic m, [int depth = 0]) {
+      if (m is! Map || depth > 3) return;
+      m.forEach((k, v) {
+        final key = k.toString().toLowerCase();
+        if (v is Map) {
+          addAll(v, depth + 1);
+        } else {
+          out.putIfAbsent(key, () => v);
+        }
+      });
+    }
+
+    if (raw != null) {
+      // Top level first, then the usual nested containers.
+      raw.forEach((k, v) {
+        if (v is! Map) out[k.toString().toLowerCase()] = v;
+      });
+      for (final k in [
+        'current_position',
+        'position',
+        'vehicle_info',
+        'attributes',
+        'io',
+        'io_data',
+        'io_elements',
+        'sensors',
+        'params',
+        'other',
+        'data',
+      ]) {
+        addAll(raw[k]);
+      }
+    }
+    return out;
+  }
+
+  /// First usable value among [keys]. With [minValue], numeric values below
+  /// it are skipped (e.g. power = 1 meaning "connected", not volts).
+  String? _pickSensor(
+    Map<String, dynamic> sv,
+    List<String> keys, {
+    double? minValue,
+  }) {
+    for (final k in keys) {
+      final v = sv[k];
+      if (v == null || v is bool) continue;
+      final s = v.toString().trim();
+      if (s.isEmpty || s == 'null' || s == '-' || s.toUpperCase() == 'N/A') {
+        continue;
+      }
+      if (minValue != null) {
+        final n = double.tryParse(s.replaceAll(RegExp(r'[^0-9.\-]'), ''));
+        if (n != null && n < minValue) continue;
+      }
+      return s;
+    }
+    return null;
+  }
+
+  void _logSensorKeysOnce(Map<String, dynamic> sv) {
+    if (_sensorKeysLogged || sv.length < 5) return;
+    _sensorKeysLogged = true;
+    debugPrint('[Sensors] Keys in response: ${sv.keys.toList()}');
+  }
+
   List<SensorReadingItem> _buildDynamicSensors({
     LiveCurrentPosition? pos,
     Map<String, dynamic>? rawMap,
@@ -755,36 +826,66 @@ class VehicleDetailController extends GetxController {
             : int.tryParse(rawMap?['ignition']?.toString() ?? '')) ??
         (vehicle?.isIgnitionOn == true ? 1 : 0);
 
-    final power =
-        pos?.power ??
-        (rawMap?['power'] is int
-            ? rawMap!['power'] as int
-            : int.tryParse(rawMap?['power']?.toString() ?? '')) ??
-        1;
+    // Sensor values are looked up under many key names and inside nested
+    // maps (current_position, attributes, io...), and Teltonika IO ids.
+    final sv = _sensorLookup(rawMap);
 
-    final batteryRaw =
-        rawMap?['battery'] ?? rawMap?['charge'] ?? rawMap?['battery_level'];
-    final batteryVal =
-        (batteryRaw != null &&
-            batteryRaw.toString().trim().isNotEmpty &&
-            batteryRaw != 'null')
-        ? (batteryRaw.toString().contains('%')
-              ? batteryRaw.toString()
-              : '$batteryRaw%')
-        : (power == 1 ? '100%' : '-');
+    // Internal (tracker) battery: percent, or volts if the device sends volts.
+    final batRaw = _pickSensor(sv, [
+      'battery_level',
+      'batterylevel',
+      'battery_percent',
+      'battery_percentage',
+      'battery',
+      'charge',
+      'internal_battery',
+      'battery_voltage',
+      'batteryvoltage',
+      'io67',
+    ]);
+    String batteryVal = '-';
+    if (batRaw != null) {
+      final n = double.tryParse(batRaw.replaceAll(RegExp(r'[^0-9.\-]'), ''));
+      if (batRaw.contains('%') || batRaw.toUpperCase().contains('V')) {
+        batteryVal = batRaw;
+      } else if (n != null && n > 100) {
+        batteryVal = '${(n / 1000).toStringAsFixed(2)} V'; // millivolts
+      } else if (n != null && n > 0 && n <= 5 && batRaw.contains('.')) {
+        batteryVal = '${n.toStringAsFixed(2)} V'; // volts (e.g. 4.08)
+      } else if (n != null) {
+        batteryVal = '${n.toStringAsFixed(0)}%';
+      }
+    }
 
-    final carBatteryRaw =
-        rawMap?['car_battery'] ??
-        rawMap?['voltage'] ??
-        rawMap?['external_power'];
-    final carBatteryVal =
-        (carBatteryRaw != null &&
-            carBatteryRaw.toString().trim().isNotEmpty &&
-            carBatteryRaw != 'null')
-        ? (carBatteryRaw.toString().contains('V')
-              ? carBatteryRaw.toString()
-              : '$carBatteryRaw V')
-        : '-';
+    // Vehicle (external) battery voltage.
+    final extRaw = _pickSensor(sv, [
+      'external_voltage',
+      'externalvoltage',
+      'ext_voltage',
+      'extvoltage',
+      'external_power',
+      'externalpower',
+      'car_battery',
+      'vehicle_battery',
+      'vehicle_voltage',
+      'main_voltage',
+      'power_voltage',
+      'supply_voltage',
+      'voltage',
+      'power',
+      'adc1',
+      'io66',
+    ], minValue: 3); // skip on/off flags like power = 1
+    String carBatteryVal = '-';
+    if (extRaw != null) {
+      final n = double.tryParse(extRaw.replaceAll(RegExp(r'[^0-9.\-]'), ''));
+      if (extRaw.toUpperCase().contains('V')) {
+        carBatteryVal = extRaw;
+      } else if (n != null) {
+        final volts = n > 100 ? n / 1000 : n; // millivolts -> volts
+        carBatteryVal = '${volts.toStringAsFixed(1)} V';
+      }
+    }
 
     final gsm =
         pos?.gsmSignalStrength ??
@@ -795,14 +896,24 @@ class VehicleDetailController extends GetxController {
         ? (gsm.toLowerCase().contains('sat') ? gsm : '$gsm Sats')
         : '-';
 
-    final fuelRaw =
-        rawMap?['fuel'] ?? rawMap?['fuel_level'] ?? rawMap?['fuel_percent'];
-    final fuelVal =
-        (fuelRaw != null &&
-            fuelRaw.toString().trim().isNotEmpty &&
-            fuelRaw != 'null')
-        ? (fuelRaw.toString().contains('%') ? fuelRaw.toString() : '$fuelRaw%')
-        : '-';
+    final fuelRaw = _pickSensor(sv, [
+      'fuel_level',
+      'fuellevel',
+      'fuel_percent',
+      'fuel_percentage',
+      'fuel',
+      'fuel_liters',
+      'fuel_litres',
+      'io89', // Teltonika fuel level %
+      'io48', // Teltonika fuel level
+    ]);
+    String fuelVal = '-';
+    if (fuelRaw != null) {
+      final low = fuelRaw.toLowerCase();
+      fuelVal = (low.contains('%') || low.contains('l'))
+          ? fuelRaw
+          : '$fuelRaw%';
+    }
 
     final alt =
         pos?.altitude ??
@@ -812,13 +923,34 @@ class VehicleDetailController extends GetxController {
         ? (alt.contains('m') ? alt : '${alt}m')
         : '-';
 
-    final tempRaw = rawMap?['temp'] ?? rawMap?['temperature'];
-    final tempVal =
-        (tempRaw != null &&
-            tempRaw.toString().trim().isNotEmpty &&
-            tempRaw != 'null')
-        ? (tempRaw.toString().contains('°') ? tempRaw.toString() : '$tempRaw°C')
-        : '-';
+    final tempRaw = _pickSensor(sv, [
+      'temperature',
+      'temp',
+      'temp1',
+      'temperature1',
+      'temperature_1',
+      'engine_temp',
+      'coolant_temp',
+      'device_temp',
+      'devicetemp',
+      'io72', // Teltonika Dallas temperature 1 (0.1 C)
+      'io201',
+    ]);
+    String tempVal = '-';
+    if (tempRaw != null) {
+      if (tempRaw.contains('°')) {
+        tempVal = tempRaw;
+      } else {
+        final n = double.tryParse(tempRaw.replaceAll(RegExp(r'[^0-9.\-]'), ''));
+        if (n != null) {
+          final c = n.abs() > 200 ? n / 10 : n; // 0.1 C units -> C
+          tempVal = '${c.toStringAsFixed(c % 1 == 0 ? 0 : 1)}°C';
+        }
+      }
+    }
+    if (carBatteryVal == '-' || fuelVal == '-' || tempVal == '-') {
+      _logSensorKeysOnce(sv);
+    }
 
     final speedVal = isStale
         ? 0.0
@@ -2264,6 +2396,12 @@ class VehicleDetailController extends GetxController {
     return covered;
   }
 
+  /// Rotation (in radians) to apply to the live car image so its front
+  /// points in the direction of travel. The car image faces right (east)
+  /// when not rotated, so 90 degrees is subtracted, exactly like History.
+  double get liveMarkerRotationRad =>
+      (liveMarkerBearing.value - 90.0) * math.pi / 180.0;
+
   double _getBearing(LatLng start, LatLng end) {
     final lat1 = start.latitude * math.pi / 180;
     final lon1 = start.longitude * math.pi / 180;
@@ -2998,9 +3136,14 @@ class VehicleDetailController extends GetxController {
     _lastGpsTime = DateTime.now();
     final isMoving = speedKmH > 0;
     isLiveMoving.value = isMoving;
+    final previousPos = liveMarkerPosition.value;
     liveMarkerPosition.value = location;
     if (courseDeg != null && courseDeg >= 0) {
       liveMarkerBearing.value = courseDeg;
+    } else if (previousPos != null &&
+        _calculateDistance(previousPos, location) > 5.0) {
+      // No course from the device: face the direction it jumped to.
+      liveMarkerBearing.value = _getBearing(previousPos, location);
     }
     if (isLiveLocked.value) {
       _followLiveCamera(location);
@@ -3132,9 +3275,17 @@ class VehicleDetailController extends GetxController {
       );
       liveMarkerPosition.value = interpolated;
 
-      final targetBearing = _getBearing(a, b);
-      final prevBearing = liveMarkerBearing.value ?? targetBearing;
-      liveMarkerBearing.value = _lerpBearing(prevBearing, targetBearing, 0.25);
+      // Heading = direction of travel. Very short road segments (< 2 m, from
+      // road snapping) can point backwards, so they don't change the heading.
+      if (_calculateDistance(a, b) >= 2.0) {
+        final targetBearing = _getBearing(a, b);
+        final smooth = 1.0 - math.exp(-dt / 0.15);
+        liveMarkerBearing.value = _lerpBearing(
+          liveMarkerBearing.value,
+          targetBearing,
+          smooth,
+        );
+      }
 
       if (isLiveLocked.value) {
         _followLiveCamera(interpolated);

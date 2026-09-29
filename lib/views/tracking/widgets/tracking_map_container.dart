@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:airotrack_web/utils/custom_media_query.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -90,11 +89,14 @@ class TrackingMapContainer extends StatelessWidget {
               FlutterMap(
                 mapController: controller.liveMapController,
                 options: MapOptions(
-                  initialCenter: (controller.vehicleDetail.value.latitude != null &&
+                  initialCenter:
+                      (controller.vehicleDetail.value.latitude != null &&
                           controller.vehicleDetail.value.longitude != null &&
                           controller.vehicleDetail.value.latitude != 0.0)
-                      ? LatLng(controller.vehicleDetail.value.latitude!,
-                          controller.vehicleDetail.value.longitude!)
+                      ? LatLng(
+                          controller.vehicleDetail.value.latitude!,
+                          controller.vehicleDetail.value.longitude!,
+                        )
                       : const LatLng(10.038, 76.325),
                   initialZoom: 16.0,
                   onPositionChanged: (camera, hasGesture) {
@@ -124,14 +126,14 @@ class TrackingMapContainer extends StatelessWidget {
                     final vehiclePos =
                         controller.liveMarkerPosition.value ??
                         currentVehiclePosition;
-                    final bearing = controller.liveMarkerBearing.value;
-
-                    final isStopped =
-                        detail.speedKmph <= 0 || !controller.isLiveMoving.value;
+                    // Read the bearing so Obx rebuilds when the heading changes.
+                    controller.liveMarkerBearing.value;
 
                     return MarkerLayer(
                       markers: [
-                        // Current Vehicle Marker (Normal upright when stopped/resting, aligned with moving direction when moving)
+                        // Current Vehicle Marker: front always points in the
+                        // direction of travel (a stopped car keeps its last
+                        // heading instead of snapping sideways).
                         Marker(
                           point: vehiclePos,
                           width: 44,
@@ -139,18 +141,13 @@ class TrackingMapContainer extends StatelessWidget {
                           alignment: Alignment.center,
                           child: GestureDetector(
                             onTap: controller.toggleMapDialog,
-                            child: isStopped
-                                ? Image.asset(
-                                    AppAssets.greenCar,
-                                    fit: BoxFit.contain,
-                                  )
-                                : Transform.rotate(
-                                    angle: (bearing - 90.0) * (math.pi / 180.0),
-                                    child: Image.asset(
-                                      AppAssets.greenCar,
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
+                            child: Transform.rotate(
+                              angle: controller.liveMarkerRotationRad,
+                              child: Image.asset(
+                                AppAssets.greenCar,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -240,9 +237,7 @@ class TrackingMapContainer extends StatelessWidget {
                           const SizedBox(height: 6),
                           _buildDialogRow(
                             'Duration:',
-                            detail.runningDuration.isNotEmpty
-                                ? detail.runningDuration
-                                : '00h 00m',
+                            controller.liveDialogDuration,
                           ),
                           const SizedBox(height: 6),
                           _buildDialogRow(

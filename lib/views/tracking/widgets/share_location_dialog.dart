@@ -5,6 +5,7 @@ import '../../../constants/app_colors.dart';
 import '../../../controllers/home_controller.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/app_toast.dart';
+import 'share_apps_dialog.dart';
 
 class ShareLocationDialog extends StatefulWidget {
   final String? vehicleNumber;
@@ -180,8 +181,26 @@ class _ShareLocationDialogState extends State<ShareLocationDialog> {
                     child: ElevatedButton(
                       onPressed: () {
                         final durationLabel = options[selectedOption];
-                        AppToast.show('Live location shared ($durationLabel)');
+                        final vNum = effectiveVehicleNumber;
+                        double? lat;
+                        double? lng;
+                        if (Get.isRegistered<VehicleDetailController>()) {
+                          final d = Get.find<VehicleDetailController>()
+                              .vehicleDetail
+                              .value;
+                          lat = d.latitude;
+                          lng = d.longitude;
+                        }
                         Get.back();
+                        showDialog(
+                          context: context,
+                          builder: (context) => ShareAppsDialog(
+                            vehicleNumber: vNum,
+                            durationLabel: durationLabel,
+                            latitude: lat,
+                            longitude: lng,
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00A3E0),
