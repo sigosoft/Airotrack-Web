@@ -186,30 +186,22 @@ class HistoryViewContent extends StatelessWidget {
 
                         _buildDialogRow(
                           'Device Time:',
-                          detail.deviceTime.isNotEmpty
-                              ? detail.deviceTime
-                              : 'N/A',
+                          controller.historyDialogDeviceTime,
                         ),
                         const SizedBox(height: 5),
                         _buildDialogRow(
                           'Server Time:',
-                          detail.serverTime.isNotEmpty
-                              ? detail.serverTime
-                              : 'N/A',
+                          controller.historyDialogServerTime,
                         ),
                         const SizedBox(height: 5),
                         _buildDialogRow(
                           'Duration:',
-                          detail.runningDuration.isNotEmpty
-                              ? detail.runningDuration
-                              : '00h 00m',
+                          controller.historyDialogDuration,
                         ),
                         const SizedBox(height: 5),
                         _buildDialogRow(
                           'Address:',
-                          detail.address.isNotEmpty
-                              ? detail.address
-                              : 'Fetching location...',
+                          controller.historyDialogAddress,
                         ),
                       ],
                     ),
@@ -276,7 +268,7 @@ class HistoryViewContent extends StatelessWidget {
                   Expanded(
                     child: _buildMetricCard(
                       icon: Icons.dashboard_outlined,
-                      value: detail.speedKmph.toString(),
+                      value: controller.historyDisplaySpeed,
                       unit: 'Kmph',
                     ),
                   ),
@@ -284,9 +276,7 @@ class HistoryViewContent extends StatelessWidget {
                   Expanded(
                     child: _buildMetricCard(
                       icon: Icons.access_time_rounded,
-                      value: detail.runningDuration.isNotEmpty
-                          ? detail.runningDuration
-                          : '00:00:00',
+                      value: controller.historyDisplayDuration,
                       unit: '',
                     ),
                   ),
@@ -294,9 +284,7 @@ class HistoryViewContent extends StatelessWidget {
                   Expanded(
                     child: _buildMetricCard(
                       icon: Icons.speed_rounded,
-                      value: detail.distanceKm.isNotEmpty
-                          ? detail.distanceKm
-                          : '0.0 Km',
+                      value: controller.historyDisplayDistance,
                       unit: '',
                     ),
                   ),
@@ -418,30 +406,19 @@ class HistoryViewContent extends StatelessWidget {
               const SizedBox(height: 12),
 
               // 3. Dynamic History Trip / Stop Item Cards
-              if (historyList.isNotEmpty)
-                ...historyList.take(5).map((pt) {
-                  final timeStr =
-                      pt['device_time']?.toString() ??
-                      pt['created_at']?.toString() ??
-                      detail.deviceTime;
-                  final speedStr =
-                      pt['speed']?.toString() ?? detail.speedKmph.toString();
-                  final distStr =
-                      pt['distance']?.toString() ?? detail.distanceKm;
-
+              if (controller.dynamicHistoryTrips.isNotEmpty)
+                ...controller.dynamicHistoryTrips.map((trip) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _buildHistoryTripCard(
-                      badgeLabel: 'Trip Point',
+                      badgeLabel: trip['badge']?.toString() ?? 'Trip',
                       badgeBgColor: const Color(0xFFD1FADF),
                       badgeTextColor: const Color(0xFF12B76A),
-                      distance: distStr,
-                      maxSpeed: '$speedStr Kmph',
-                      startTime: timeStr,
-                      duration: detail.runningDuration.isNotEmpty
-                          ? detail.runningDuration
-                          : '00h 00m',
-                      endTime: timeStr,
+                      distance: trip['distance']?.toString() ?? '0.00 Km',
+                      maxSpeed: trip['maxSpeed']?.toString() ?? '0.0 Kmph',
+                      startTime: trip['startTime']?.toString() ?? '-',
+                      duration: trip['duration']?.toString() ?? '00h 00m',
+                      endTime: trip['endTime']?.toString() ?? '-',
                     ),
                   );
                 }).toList()

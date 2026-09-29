@@ -55,4 +55,48 @@ class VehicleDetailData {
     required this.todayOdoKm,
     required this.sensors,
   });
+
+  VehicleDetailData copyWith({
+    String? vehicleNumber,
+    String? odometerDigits,
+    String? timestamp,
+    String? distanceKm,
+    int? speedKmph,
+    String? coordinates,
+    double? latitude,
+    double? longitude,
+    String? address,
+    String? deviceTime,
+    String? serverTime,
+    String? runningDuration,
+    String? idleDuration,
+    String? stoppedDuration,
+    String? inactiveDuration,
+    String? avgSpeedKmph,
+    String? maxSpeedKmph,
+    String? todayOdoKm,
+    List<SensorReadingItem>? sensors,
+  }) {
+    return VehicleDetailData(
+      vehicleNumber: vehicleNumber ?? this.vehicleNumber,
+      odometerDigits: odometerDigits ?? this.odometerDigits,
+      timestamp: timestamp ?? this.timestamp,
+      distanceKm: distanceKm ?? this.distanceKm,
+      speedKmph: speedKmph ?? this.speedKmph,
+      coordinates: coordinates ?? this.coordinates,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      address: address ?? this.address,
+      deviceTime: deviceTime ?? this.deviceTime,
+      serverTime: serverTime ?? this.serverTime,
+      runningDuration: runningDuration ?? this.runningDuration,
+      idleDuration: idleDuration ?? this.idleDuration,
+      stoppedDuration: stoppedDuration ?? this.stoppedDuration,
+      inactiveDuration: inactiveDuration ?? this.inactiveDuration,
+      avgSpeedKmph: avgSpeedKmph ?? this.avgSpeedKmph,
+      maxSpeedKmph: maxSpeedKmph ?? this.maxSpeedKmph,
+      todayOdoKm: todayOdoKm ?? this.todayOdoKm,
+      sensors: sensors ?? this.sensors,
+    );
+  }
 }

@@ -17,9 +17,12 @@ class TrackingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = CustomMediaQuery.isMobile(context);
-    final statusColor = data.isGreenVehicle
-        ? const Color(0xFF00A859)
-        : const Color(0xFFE53935);
+    final isIdle = data.status.trim().toUpperCase() == 'IDLE';
+    final statusColor = isIdle
+        ? const Color(0xFFF57C00)
+        : (data.isGreenVehicle
+            ? const Color(0xFF00A859)
+            : const Color(0xFFE53935));
 
     return Container(
       decoration: BoxDecoration(

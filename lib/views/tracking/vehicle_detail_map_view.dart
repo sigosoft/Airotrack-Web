@@ -8,7 +8,7 @@ import 'widgets/history_view_content.dart';
 import 'widgets/map_bottom_action_cards.dart';
 import 'widgets/statistics_view_content.dart';
 import 'widgets/tracking_map_container.dart';
-import 'widgets/vehicle_info_sidebar.dart';
+import 'widgets/vehicle_info_sidebar.dart' hide VehicleDetailController;
 
 class VehicleDetailMapView extends StatelessWidget {
   const VehicleDetailMapView({super.key});
@@ -17,8 +17,8 @@ class VehicleDetailMapView extends StatelessWidget {
   Widget build(BuildContext context) {
     final VehicleDetailController controller =
         Get.isRegistered<VehicleDetailController>()
-            ? Get.find<VehicleDetailController>()
-            : Get.put(VehicleDetailController());
+        ? Get.find<VehicleDetailController>()
+        : Get.put(VehicleDetailController());
     final isMobile = CustomMediaQuery.isMobile(context);
 
     return Scaffold(

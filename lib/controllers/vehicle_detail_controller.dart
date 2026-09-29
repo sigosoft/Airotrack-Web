@@ -39,53 +39,32 @@ class VehicleDetailController extends GetxController {
   LiveWebsocketConfig? _wsConfig;
   LiveWebsocketInfo? _wsInfo;
 
-  Ticker? _liveTicker;
-  Duration _lastLiveTickStamp = Duration.zero;
+  Timer? _liveAnimationTimer;
+  DateTime? _lastLiveTickTime;
 
-  double _pathLat = 0.0;
-  double _pathLng = 0.0;
-  double _corrLat = 0.0;
-  double _corrLng = 0.0;
-  double _lockedBearing = 0.0;
-  double _uiHeading = 0.0;
-  bool _hasLiveHeading = false;
-
-  LatLng? _liveTarget;
+  // Live Tracking Waypoint Motion Engine
+  final List<LatLng> _liveWaypoints = [];
+  int _liveWaypointIndex = 0;
+  double _liveWaypointFraction = 0.0;
+  double _currentLiveSpeedMs = 0.0;
   LatLng? _lastAcceptedGps;
   DateTime? _lastGpsTime;
   double _lastReportedSpeedKmh = 0.0;
-  double _lastInferredSpeedKmh = 0.0;
-  bool _isMovingVehicle = false;
-  double _glideSpeedMs = 0.0;
-  double _expectedPingSec = 6.0;
-
-  int _routeRequestId = 0;
-  final List<LatLng> _roadQueue = [];
-  final List<LatLng> _gpsTrace = [];
-  final List<LatLng> _lastRoadCorridor = [];
-  bool _roadFetchInFlight = false;
-  LatLng? _pendingRoadTarget;
-  DateTime? _lastRoadFetchAt;
+  double _expectedPingSec = 4.0;
+  Timer? _livePollingTimer;
+  DateTime _lastLiveUpdateReceivedAt = DateTime.now();
   bool _liveDisposed = false;
+  bool _roadFetchInFlight = false;
+  final List<LatLng> _lastRoadCorridor = [];
 
-  static const double _speedTau = 0.50;
-  static const double _correctionTau = 0.40;
-  static const double _maxCorrectionM = 30.0;
-  static const double _teleportCorrectionM = 90.0;
-  static const double _maxGlideSpeedMs = 45.0;
-  static const double _minRollSpeedMs = 0.6;
-  static const double _stoppedCreepMs = 0.35;
-  static const double _stoppedGpsDeadbandM = 6.0;
-  static const double _headingLookAheadM = 14.0;
-  static const double _maxUiHeadingDegPerSec = 60.0;
-  static const double _roadWaypointMinM = 4.0;
-  static const double _minRoadRouteMeters = 8.0;
-  static const double _maxBackwardBearingDeg = 95.0;
-  static const double _snapBackMinLagMeters = 4.0;
-  static const double _reverseGpsStepMeters = 4.0;
-  static const double _reconnectSnapMeters = 150.0;
-  static const double _minGpsBearingMoveM = 10.0;
-  static const int _gpsTraceMaxPoints = 8;
+  // Live session guards (prevent restarts / stale async results from resetting motion)
+  int _liveSessionId = 0;
+  String? _liveTrackingImei;
+  DateTime? _lastLiveFixTime;
+
+  // A fix older than this is shown as not moving (speed 0) instead of
+  // repeating the last reported speed while the device is silent.
+  static const Duration _liveStaleAfter = Duration(minutes: 2);
 
   // History Playback Engine
   final RxDouble playbackProgress = 0.0.obs;
@@ -105,6 +84,13 @@ class VehicleDetailController extends GetxController {
 
   static const Duration _playbackFramePeriod = Duration(milliseconds: 16);
   static const double _playbackTickSeconds = 0.016;
+  // History playback pace at 1x is defined on screen: the car moves about
+  // this many pixels per second at whatever zoom the map is on, so it is
+  // always visibly moving but never jumps. 1.5x / 2x multiply this.
+  static const double _playbackScreenPxPerSec = 45.0;
+  static const double _playbackMinMps = 8.0;
+  static const double _playbackMaxMps = 600.0;
+  DateTime? _lastPlaybackTickAt;
   static const double _bearingSmoothing = 0.35;
   static String _formatInitialDate(DateTime dt, {bool isStart = true}) {
     final day = dt.day.toString().padLeft(2, '0');
@@ -133,6 +119,210 @@ class VehicleDetailController extends GetxController {
   final RxBool isStatisticsLoading = false.obs;
   final historyPoints = <Map<String, dynamic>>[].obs;
   final liveTrackData = <String, dynamic>{}.obs;
+
+  // Dynamic History Metadata & Trips
+  final RxMap<String, dynamic> historyResponseData = <String, dynamic>{}.obs;
+  final RxList<Map<String, dynamic>> historyTrips =
+      <Map<String, dynamic>>[].obs;
+  final RxDouble currentPlaybackSpeedKmph = 0.0.obs;
+
+  String get historyDisplaySpeed {
+    if (isPlaying.value) {
+      return currentPlaybackSpeedKmph.value.toStringAsFixed(1);
+    }
+    if (_playbackSpeedSeries.isNotEmpty) {
+      final validSpeeds = _playbackSpeedSeries.where((s) => s > 0).toList();
+      if (validSpeeds.isNotEmpty) {
+        final avg = validSpeeds.reduce((a, b) => a + b) / validSpeeds.length;
+        return avg.toStringAsFixed(1);
+      }
+    }
+    final metaAvg =
+        historyResponseData['average_speed'] ??
+        historyResponseData['avg_speed'] ??
+        statisticsData['Average Speed'];
+    if (metaAvg != null && metaAvg.toString().isNotEmpty) {
+      final clean = metaAvg.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+      if (clean.isNotEmpty) return clean;
+    }
+    return vehicleDetail.value.speedKmph.toString();
+  }
+
+  String get historyDisplayDuration {
+    if (historyTrips.isNotEmpty) {
+      final firstStart = historyTrips.first['startTime'];
+      final lastEnd = historyTrips.last['endTime'];
+      final sDt = _parseTimestamp(firstStart);
+      final eDt = _parseTimestamp(lastEnd);
+      if (sDt != null && eDt != null) {
+        return _formatDuration(eDt.difference(sDt));
+      }
+      return historyTrips.first['duration'] ?? '00:00:00';
+    }
+    if (historyPoints.length >= 2) {
+      final sDt = _parseTimestamp(
+        historyPoints.first['device_time'] ?? historyPoints.first['created_at'],
+      );
+      final eDt = _parseTimestamp(
+        historyPoints.last['device_time'] ?? historyPoints.last['created_at'],
+      );
+      if (sDt != null && eDt != null) {
+        return _formatDuration(eDt.difference(sDt));
+      }
+    }
+    final metaDur =
+        historyResponseData['duration'] ??
+        historyResponseData['total_duration'] ??
+        statisticsData['Move Duration'];
+    if (metaDur != null &&
+        metaDur.toString().isNotEmpty &&
+        metaDur.toString() != '00:00:00') {
+      return metaDur.toString();
+    }
+    return vehicleDetail.value.runningDuration.isNotEmpty
+        ? vehicleDetail.value.runningDuration
+        : '00:00:00';
+  }
+
+  String get historyDisplayDistance {
+    final route = getActiveRoutePoints();
+    if (route.length >= 2) {
+      final km = _getTotalDistanceKm(route);
+      return '${km.toStringAsFixed(2)} Km';
+    }
+    final metaDist =
+        historyResponseData['distance'] ??
+        historyResponseData['total_distance'] ??
+        statisticsData['Route Length'];
+    if (metaDist != null &&
+        metaDist.toString().isNotEmpty &&
+        metaDist.toString() != '0 km') {
+      return metaDist.toString().contains('Km')
+          ? metaDist.toString()
+          : '$metaDist Km';
+    }
+    return vehicleDetail.value.distanceKm.isNotEmpty
+        ? vehicleDetail.value.distanceKm
+        : '0.0 Km';
+  }
+
+  String get historyDialogDeviceTime {
+    if (historyPoints.isNotEmpty) {
+      final idx = _movingSegmentIndex.clamp(0, historyPoints.length - 1);
+      final pt = historyPoints[idx];
+      final val =
+          pt['device_time'] ??
+          pt['created_at'] ??
+          pt['timestamp'] ??
+          pt['time'];
+      if (val != null && val.toString().trim().isNotEmpty) {
+        return formatDisplayTime(val.toString());
+      }
+    }
+    return vehicleDetail.value.deviceTime.isNotEmpty
+        ? vehicleDetail.value.deviceTime
+        : 'N/A';
+  }
+
+  String get historyDialogServerTime {
+    if (historyPoints.isNotEmpty) {
+      final idx = _movingSegmentIndex.clamp(0, historyPoints.length - 1);
+      final pt = historyPoints[idx];
+      final val = pt['server_time'] ?? pt['updated_at'];
+      if (val != null && val.toString().trim().isNotEmpty) {
+        return formatDisplayTime(val.toString());
+      }
+    }
+    return vehicleDetail.value.serverTime.isNotEmpty
+        ? vehicleDetail.value.serverTime
+        : 'N/A';
+  }
+
+  String get historyDialogDuration {
+    return historyDisplayDuration;
+  }
+
+  String get historyDialogAddress {
+    if (historyPoints.isNotEmpty) {
+      final idx = _movingSegmentIndex.clamp(0, historyPoints.length - 1);
+      final pt = historyPoints[idx];
+      final addr = pt['address'] ?? pt['location'];
+      if (addr != null && addr.toString().trim().isNotEmpty && addr != 'null') {
+        return addr.toString();
+      }
+    }
+    return vehicleDetail.value.address.isNotEmpty
+        ? vehicleDetail.value.address
+        : 'Fetching location...';
+  }
+
+  DateTime? _parseTimestamp(dynamic timeVal) {
+    if (timeVal == null) return null;
+    final str = timeVal.toString().trim();
+    if (str.isEmpty || str == '-' || str == 'N/A') return null;
+
+    final iso = DateTime.tryParse(str);
+    if (iso != null) return iso;
+
+    try {
+      final parts = str.split(' ');
+      if (parts.length >= 2) {
+        final dateParts = parts[0].split('-');
+        if (dateParts.length == 3) {
+          int p1 = int.parse(dateParts[0]);
+          int p2 = int.parse(dateParts[1]);
+          int p3 = int.parse(dateParts[2]);
+          int year = p3 > 1000 ? p3 : p1;
+          int day = p3 > 1000 ? p1 : p3;
+          int month = p2;
+          final timeParts = parts[1].split(':');
+          int hour = int.parse(timeParts[0]);
+          int minute = int.parse(timeParts[1]);
+          int second = timeParts.length > 2 ? int.parse(timeParts[2]) : 0;
+          if (parts.length > 2 && parts[2].toUpperCase() == 'PM' && hour < 12) {
+            hour += 12;
+          } else if (parts.length > 2 &&
+              parts[2].toUpperCase() == 'AM' &&
+              hour == 12) {
+            hour = 0;
+          }
+          return DateTime(year, month, day, hour, minute, second);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.isNegative) d = -d;
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}h ${minutes.toString().padLeft(2, '0')}m';
+    } else if (minutes > 0) {
+      return '${minutes.toString().padLeft(2, '0')}m ${seconds.toString().padLeft(2, '0')}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
+  String formatDisplayTime(String raw) {
+    if (raw.trim().isEmpty || raw == '-' || raw == 'N/A') return '-';
+    final dt = _parseTimestamp(raw);
+    if (dt != null) {
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      final year = dt.year.toString();
+      final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final second = dt.second.toString().padLeft(2, '0');
+      final period = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$day-$month-$year ${hour.toString().padLeft(2, '0')}:$minute:$second $period';
+    }
+    return raw;
+  }
 
   final RxMap<String, String> statisticsData = <String, String>{
     'Route Length': '0 km',
@@ -185,6 +375,7 @@ class VehicleDetailController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _startLiveAnimationLoop();
     _bindToHomeController();
     placeMovingMarkerAtStart();
   }
@@ -219,6 +410,160 @@ class VehicleDetailController extends GetxController {
     }
   }
 
+  String _extractOdometerDigits(dynamic val, {dynamic fallback}) {
+    String? tryParse(dynamic v) {
+      if (v == null) return null;
+      final str = v.toString().trim();
+      if (str.isEmpty || str == '-' || str == 'N/A' || str == 'null')
+        return null;
+      final clean = str.split('.').first.replaceAll(RegExp(r'[^0-9]'), '');
+      if (clean.isNotEmpty && clean != '0' && clean != '0000000') {
+        return clean.length >= 7 ? clean : clean.padLeft(7, '0');
+      }
+      return null;
+    }
+
+    final primary = tryParse(val);
+    if (primary != null) return primary;
+
+    final second = tryParse(fallback);
+    if (second != null) return second;
+
+    return '0000000';
+  }
+
+  List<SensorReadingItem> _buildDynamicSensors({
+    LiveCurrentPosition? pos,
+    Map<String, dynamic>? rawMap,
+    Vehicle? vehicle,
+    bool isStale = false,
+  }) {
+    final ignition =
+        pos?.ignition ??
+        (rawMap?['ignition'] is int
+            ? rawMap!['ignition'] as int
+            : int.tryParse(rawMap?['ignition']?.toString() ?? '')) ??
+        (vehicle?.isIgnitionOn == true ? 1 : 0);
+
+    final power =
+        pos?.power ??
+        (rawMap?['power'] is int
+            ? rawMap!['power'] as int
+            : int.tryParse(rawMap?['power']?.toString() ?? '')) ??
+        1;
+
+    final batteryRaw =
+        rawMap?['battery'] ?? rawMap?['charge'] ?? rawMap?['battery_level'];
+    final batteryVal =
+        (batteryRaw != null &&
+            batteryRaw.toString().trim().isNotEmpty &&
+            batteryRaw != 'null')
+        ? (batteryRaw.toString().contains('%')
+              ? batteryRaw.toString()
+              : '$batteryRaw%')
+        : (power == 1 ? '100%' : '-');
+
+    final carBatteryRaw =
+        rawMap?['car_battery'] ??
+        rawMap?['voltage'] ??
+        rawMap?['external_power'];
+    final carBatteryVal =
+        (carBatteryRaw != null &&
+            carBatteryRaw.toString().trim().isNotEmpty &&
+            carBatteryRaw != 'null')
+        ? (carBatteryRaw.toString().contains('V')
+              ? carBatteryRaw.toString()
+              : '$carBatteryRaw V')
+        : '-';
+
+    final gsm =
+        pos?.gsmSignalStrength ??
+        rawMap?['gsm_signal_strength']?.toString() ??
+        rawMap?['satellites']?.toString() ??
+        rawMap?['sat']?.toString();
+    final satelliteVal = (gsm != null && gsm.isNotEmpty && gsm != 'null')
+        ? (gsm.toLowerCase().contains('sat') ? gsm : '$gsm Sats')
+        : '-';
+
+    final fuelRaw =
+        rawMap?['fuel'] ?? rawMap?['fuel_level'] ?? rawMap?['fuel_percent'];
+    final fuelVal =
+        (fuelRaw != null &&
+            fuelRaw.toString().trim().isNotEmpty &&
+            fuelRaw != 'null')
+        ? (fuelRaw.toString().contains('%') ? fuelRaw.toString() : '$fuelRaw%')
+        : '-';
+
+    final alt =
+        pos?.altitude ??
+        rawMap?['altitude']?.toString() ??
+        rawMap?['accuracy']?.toString();
+    final accuracyVal = (alt != null && alt.isNotEmpty && alt != 'null')
+        ? (alt.contains('m') ? alt : '${alt}m')
+        : '-';
+
+    final tempRaw = rawMap?['temp'] ?? rawMap?['temperature'];
+    final tempVal =
+        (tempRaw != null &&
+            tempRaw.toString().trim().isNotEmpty &&
+            tempRaw != 'null')
+        ? (tempRaw.toString().contains('°') ? tempRaw.toString() : '$tempRaw°C')
+        : '-';
+
+    final speedVal = isStale
+        ? 0.0
+        : (pos?.speed ??
+              double.tryParse(
+                rawMap?['speed']?.toString() ?? vehicle?.speed ?? '0',
+              ) ??
+              0.0);
+    final movement1 = speedVal > 0
+        ? 'Moving'
+        : (ignition == 1 ? 'Idle' : 'Stopped');
+
+    final mode = pos?.mode ?? rawMap?['mode']?.toString();
+    final movement2 = (mode != null && mode.isNotEmpty && mode != 'null')
+        ? mode
+        : (speedVal > 0
+              ? 'GPS Fix'
+              : (ignition == 1 ? 'Stationary' : 'Parked'));
+
+    return [
+      SensorReadingItem(
+        label: 'Battery',
+        value: batteryVal,
+        iconType: 'battery',
+      ),
+      SensorReadingItem(
+        label: 'Car Battery',
+        value: carBatteryVal,
+        iconType: 'car_battery',
+      ),
+      SensorReadingItem(
+        label: 'Satellite',
+        value: satelliteVal,
+        iconType: 'satellite',
+      ),
+      SensorReadingItem(label: 'Fuel', value: fuelVal, iconType: 'fuel'),
+      SensorReadingItem(
+        label: 'Accuracy',
+        value: accuracyVal,
+        iconType: 'accuracy',
+      ),
+      SensorReadingItem(label: 'Temperature', value: tempVal, iconType: 'temp'),
+      SensorReadingItem(
+        label: 'Movement',
+        value: movement1,
+        iconType: 'movement',
+      ),
+      SensorReadingItem(
+        label: 'Movement',
+        value: movement2,
+        iconType: 'movement2',
+      ),
+    ];
+  }
+
   /// Update vehicle details from a selected [Vehicle] model
   void updateFromVehicle(Vehicle v) {
     activeImei = v.deviceId;
@@ -229,9 +574,21 @@ class VehicleDetailController extends GetxController {
         ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
         : 'Coordinates N/A';
 
+    final initialSensors = _buildDynamicSensors(
+      vehicle: v,
+      rawMap: {'speed': v.speed, 'ignition': v.isIgnitionOn ? 1 : 0},
+    );
+
+    final initialOdo = _extractOdometerDigits(
+      v.odometer,
+      fallback: v.distance.isNotEmpty && v.distance != '0'
+          ? v.distance
+          : (v.todayKm.isNotEmpty && v.todayKm != '0' ? v.todayKm : null),
+    );
+
     vehicleDetail.value = VehicleDetailData(
       vehicleNumber: v.plateNumber,
-      odometerDigits: '0000000',
+      odometerDigits: initialOdo,
       timestamp: v.lastUpdated.isNotEmpty ? v.lastUpdated : 'N/A',
       distanceKm: v.todayKm,
       speedKmph: speed.toInt(),
@@ -241,19 +598,45 @@ class VehicleDetailController extends GetxController {
       address: v.locationLabel,
       deviceTime: v.lastUpdated,
       serverTime: v.lastUpdated,
-      runningDuration: v.statusDuration,
-      idleDuration: v.statusDuration,
-      stoppedDuration: v.statusDuration,
-      inactiveDuration: v.statusDuration,
+      runningDuration: v.statusDuration.isNotEmpty
+          ? v.statusDuration
+          : '00:00:00',
+      idleDuration: v.statusDuration.isNotEmpty ? v.statusDuration : '00:00:00',
+      stoppedDuration: v.statusDuration.isNotEmpty
+          ? v.statusDuration
+          : '00:00:00',
+      inactiveDuration: v.statusDuration.isNotEmpty
+          ? v.statusDuration
+          : '00:00:00',
       avgSpeedKmph: v.speed,
       maxSpeedKmph: v.speed,
       todayOdoKm: v.todayKm,
-      sensors: vehicleDetail.value.sensors,
+      sensors: initialSensors,
     );
+
+    // FIX: when the same vehicle is already being live-tracked, a Home list
+    // refresh must NOT snap the marker back to Home's (often older) position
+    // or tear down the WebSocket. That was causing the jump-back / freeze.
+    final bool isSameLiveSession =
+        selectedTopTab.value == -1 &&
+        _liveTrackingImei != null &&
+        _liveTrackingImei == v.deviceId &&
+        _liveWaypoints.isNotEmpty;
+
+    if (!isSameLiveSession &&
+        lat != null &&
+        lng != null &&
+        (lat != 0.0 || lng != 0.0)) {
+      final loc = LatLng(lat, lng);
+      _snapLiveMarkerTo(loc, speed);
+      isLiveMoving.value = speed > 0 || v.status.toLowerCase() == 'running';
+    }
 
     if (v.deviceId.isNotEmpty) {
       if (selectedTopTab.value == -1) {
-        startLiveTracking(v.deviceId);
+        // Same API call as before; for an active session it only refreshes
+        // the snapshot instead of resetting the whole live engine.
+        startLiveTracking(v.deviceId, reconnectOnly: isSameLiveSession);
       } else {
         loadVehicleSnapshot(v.deviceId);
       }
@@ -282,6 +665,9 @@ class VehicleDetailController extends GetxController {
       if (response.data != null && response.data['data'] != null) {
         final data = response.data['data'];
         final currentPos = data['current_position'] ?? data['vehicle_info'];
+        final todayStats = data['today_statistics'] is Map
+            ? Map<String, dynamic>.from(data['today_statistics'])
+            : null;
 
         if (currentPos != null && currentPos is Map) {
           final lat = double.tryParse(currentPos['latitude']?.toString() ?? '');
@@ -290,7 +676,20 @@ class VehicleDetailController extends GetxController {
           );
           final speed =
               double.tryParse(currentPos['speed']?.toString() ?? '0') ?? 0.0;
-          final odo = currentPos['odometer']?.toString() ?? '0';
+          final rawOdo =
+              currentPos['odometer'] ??
+              currentPos['total_distance'] ??
+              currentPos['total_kilometers_traveled'] ??
+              currentPos['kilometer'] ??
+              data['vehicle_info']?['total_kilometers_traveled'] ??
+              data['vehicle_info']?['odometer'] ??
+              todayStats?['total_kilometers_today'] ??
+              todayStats?['odometer'] ??
+              data['odometer'];
+
+          final dynSensors = _buildDynamicSensors(
+            rawMap: Map<String, dynamic>.from(currentPos),
+          );
 
           vehicleDetail.update((val) {
             if (val != null) {
@@ -299,10 +698,17 @@ class VehicleDetailController extends GetxController {
                     currentPos['vehicle_number']?.toString() ??
                     currentPos['name']?.toString() ??
                     val.vehicleNumber,
-                odometerDigits: odo.padLeft(7, '0'),
+                odometerDigits: _extractOdometerDigits(
+                  rawOdo,
+                  fallback: val.odometerDigits,
+                ),
                 timestamp:
                     currentPos['device_time']?.toString() ?? val.timestamp,
-                distanceKm: val.distanceKm,
+                distanceKm: currentPos['kilometer'] != null
+                    ? '${currentPos['kilometer']} km'
+                    : (todayStats?['total_kilometers_today'] != null
+                          ? '${todayStats!['total_kilometers_today']} km'
+                          : val.distanceKm),
                 speedKmph: speed.toInt(),
                 coordinates: (lat != null && lng != null)
                     ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
@@ -317,14 +723,34 @@ class VehicleDetailController extends GetxController {
                     currentPos['device_time']?.toString() ?? val.deviceTime,
                 serverTime:
                     currentPos['server_time']?.toString() ?? val.serverTime,
-                runningDuration: val.runningDuration,
-                idleDuration: val.idleDuration,
-                stoppedDuration: val.stoppedDuration,
-                inactiveDuration: val.inactiveDuration,
-                avgSpeedKmph: val.avgSpeedKmph,
-                maxSpeedKmph: val.maxSpeedKmph,
-                todayOdoKm: val.todayOdoKm,
-                sensors: val.sensors,
+                runningDuration:
+                    todayStats?['running_duration']?.toString() ??
+                    todayStats?['display_running_duration']?.toString() ??
+                    val.runningDuration,
+                idleDuration:
+                    todayStats?['idle_duration']?.toString() ??
+                    todayStats?['display_idle_duration']?.toString() ??
+                    val.idleDuration,
+                stoppedDuration:
+                    todayStats?['stopped_duration']?.toString() ??
+                    todayStats?['display_stopped_duration']?.toString() ??
+                    val.stoppedDuration,
+                inactiveDuration:
+                    todayStats?['inactive_duration']?.toString() ??
+                    todayStats?['display_inactive_duration']?.toString() ??
+                    val.inactiveDuration,
+                avgSpeedKmph:
+                    todayStats?['avg_speed']?.toString() ??
+                    todayStats?['average_speed']?.toString() ??
+                    val.avgSpeedKmph,
+                maxSpeedKmph:
+                    todayStats?['max_speed']?.toString() ??
+                    todayStats?['top_speed']?.toString() ??
+                    val.maxSpeedKmph,
+                todayOdoKm:
+                    todayStats?['total_kilometers_today']?.toString() ??
+                    val.todayOdoKm,
+                sensors: dynSensors,
               );
             }
           });
@@ -350,6 +776,24 @@ class VehicleDetailController extends GetxController {
         final data = response.data['data'];
         if (data is Map) {
           liveTrackData.value = Map<String, dynamic>.from(data);
+          final pos = data['current_position'] ?? data['position'] ?? data;
+          if (pos is Map) {
+            final rawOdo =
+                pos['odometer'] ??
+                pos['total_distance'] ??
+                pos['total_kilometers_traveled'] ??
+                pos['kilometer'] ??
+                data['vehicle_info']?['total_kilometers_traveled'] ??
+                data['vehicle_info']?['odometer'];
+            final digits = _extractOdometerDigits(rawOdo);
+            if (digits != '0000000') {
+              vehicleDetail.update((val) {
+                if (val != null) {
+                  vehicleDetail.value = val.copyWith(odometerDigits: digits);
+                }
+              });
+            }
+          }
         }
       }
     } catch (e) {
@@ -454,10 +898,23 @@ class VehicleDetailController extends GetxController {
 
       if (response.data != null) {
         final resData = response.data['data'] ?? response.data;
+        if (resData is Map) {
+          historyResponseData.value = Map<String, dynamic>.from(resData);
+        } else {
+          historyResponseData.clear();
+        }
+
         List<dynamic> raw = [];
+        List<dynamic> rawTrips = [];
         if (resData is List) {
           raw = resData;
         } else if (resData is Map) {
+          if (resData['trips'] is List) {
+            rawTrips = resData['trips'];
+          } else if (resData['trip_reports'] is List) {
+            rawTrips = resData['trip_reports'];
+          }
+
           if (resData['location_history'] is List) {
             raw = resData['location_history'];
           } else if (resData['history'] is List) {
@@ -485,6 +942,8 @@ class VehicleDetailController extends GetxController {
             .whereType<Map>()
             .map((j) => Map<String, dynamic>.from(j))
             .toList();
+
+        _populateHistoryTrips(rawTrips);
         initPlaybackRoute();
       }
     } catch (e) {
@@ -492,6 +951,234 @@ class VehicleDetailController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  List<Map<String, dynamic>> get dynamicHistoryTrips {
+    if (historyTrips.isNotEmpty) return historyTrips;
+    if (historyPoints.isEmpty) return [];
+    return _generateTripsFromPoints();
+  }
+
+  void _populateHistoryTrips(List<dynamic> rawTrips) {
+    if (rawTrips.isNotEmpty) {
+      final list = <Map<String, dynamic>>[];
+      for (int i = 0; i < rawTrips.length; i++) {
+        final item = rawTrips[i];
+        if (item is Map) {
+          final m = Map<String, dynamic>.from(item);
+          final dist =
+              m['distance'] ??
+              m['trip_distance'] ??
+              m['distance_km'] ??
+              '0.00 Km';
+          final spd =
+              m['max_speed'] ?? m['speed'] ?? m['top_speed'] ?? '0.0 Kmph';
+          final start =
+              m['startTime'] ??
+              m['start_time'] ??
+              m['from_time'] ??
+              m['created_at'] ??
+              '-';
+          final end =
+              m['endTime'] ??
+              m['end_time'] ??
+              m['to_time'] ??
+              m['updated_at'] ??
+              '-';
+          final dur =
+              m['duration'] ??
+              m['trip_duration'] ??
+              m['time_duration'] ??
+              _calculateDurationString(start.toString(), end.toString());
+          list.add({
+            'badge': m['badge']?.toString() ?? 'Trip ${i + 1}',
+            'distance': dist.toString().toLowerCase().contains('km')
+                ? dist.toString()
+                : '$dist Km',
+            'maxSpeed': spd.toString().toLowerCase().contains('km')
+                ? spd.toString()
+                : '$spd Kmph',
+            'startTime': formatDisplayTime(start.toString()),
+            'duration': dur.toString(),
+            'endTime': formatDisplayTime(end.toString()),
+          });
+        }
+      }
+      historyTrips.value = list;
+    } else {
+      historyTrips.value = _generateTripsFromPoints();
+    }
+  }
+
+  List<Map<String, dynamic>> _generateTripsFromPoints() {
+    if (historyPoints.isEmpty) return [];
+
+    if (historyPoints.length == 1) {
+      final pt = historyPoints.first;
+      final timeStr =
+          pt['device_time']?.toString() ??
+          pt['created_at']?.toString() ??
+          pt['timestamp']?.toString() ??
+          pt['time']?.toString() ??
+          '-';
+      final speedVal = double.tryParse(pt['speed']?.toString() ?? '') ?? 0.0;
+      return [
+        {
+          'badge': 'Trip',
+          'distance': '0.00 Km',
+          'maxSpeed': '${speedVal.toStringAsFixed(1)} Kmph',
+          'startTime': formatDisplayTime(timeStr),
+          'duration': '00h 00m',
+          'endTime': formatDisplayTime(timeStr),
+        },
+      ];
+    }
+
+    // Segment points into trips by detecting stops (> 5 mins stationary or > 15 mins timestamp gap)
+    List<Map<String, dynamic>> trips = [];
+    List<Map<String, dynamic>> currentTripPoints = [];
+
+    for (int i = 0; i < historyPoints.length; i++) {
+      final pt = historyPoints[i];
+      if (currentTripPoints.isEmpty) {
+        currentTripPoints.add(pt);
+        continue;
+      }
+
+      final prevPt = currentTripPoints.last;
+      final prevTime = _parseTimestamp(
+        prevPt['device_time'] ??
+            prevPt['created_at'] ??
+            prevPt['timestamp'] ??
+            prevPt['time'],
+      );
+      final currTime = _parseTimestamp(
+        pt['device_time'] ?? pt['created_at'] ?? pt['timestamp'] ?? pt['time'],
+      );
+
+      final speed = double.tryParse(pt['speed']?.toString() ?? '') ?? 0.0;
+      final prevSpeed =
+          double.tryParse(prevPt['speed']?.toString() ?? '') ?? 0.0;
+
+      bool isNewTrip = false;
+      if (prevTime != null && currTime != null) {
+        final gapSec = currTime.difference(prevTime).inSeconds.abs();
+        if ((gapSec >= 300 && speed == 0 && prevSpeed == 0) || gapSec >= 900) {
+          isNewTrip = true;
+        }
+      }
+
+      if (isNewTrip && currentTripPoints.length >= 2) {
+        trips.add(
+          _buildTripSummaryMap(currentTripPoints, tripIndex: trips.length + 1),
+        );
+        currentTripPoints = [pt];
+      } else {
+        currentTripPoints.add(pt);
+      }
+    }
+
+    if (currentTripPoints.isNotEmpty) {
+      trips.add(
+        _buildTripSummaryMap(currentTripPoints, tripIndex: trips.length + 1),
+      );
+    }
+
+    if (trips.length == 1) {
+      trips[0]['badge'] = 'Trip';
+    }
+
+    return trips;
+  }
+
+  Map<String, dynamic> _buildTripSummaryMap(
+    List<Map<String, dynamic>> pts, {
+    required int tripIndex,
+  }) {
+    if (pts.isEmpty) return {};
+
+    final first = pts.first;
+    final last = pts.last;
+
+    final rawStart =
+        first['device_time'] ??
+        first['created_at'] ??
+        first['timestamp'] ??
+        first['time'] ??
+        '-';
+    final rawEnd =
+        last['device_time'] ??
+        last['created_at'] ??
+        last['timestamp'] ??
+        last['time'] ??
+        '-';
+
+    final startDt = _parseTimestamp(rawStart);
+    final endDt = _parseTimestamp(rawEnd);
+
+    String durationStr = '00h 00m';
+    if (startDt != null && endDt != null) {
+      final diff = endDt.difference(startDt);
+      durationStr = _formatDuration(diff);
+    }
+
+    double distKm = 0.0;
+    double maxSpeedKmph = 0.0;
+    for (int i = 0; i < pts.length; i++) {
+      final s = double.tryParse(pts[i]['speed']?.toString() ?? '') ?? 0.0;
+      if (s > maxSpeedKmph) maxSpeedKmph = s;
+
+      if (i < pts.length - 1) {
+        final lat1 = double.tryParse(
+          pts[i]['latitude']?.toString() ?? pts[i]['lat']?.toString() ?? '',
+        );
+        final lon1 = double.tryParse(
+          pts[i]['longitude']?.toString() ?? pts[i]['lng']?.toString() ?? '',
+        );
+        final lat2 = double.tryParse(
+          pts[i + 1]['latitude']?.toString() ??
+              pts[i + 1]['lat']?.toString() ??
+              '',
+        );
+        final lon2 = double.tryParse(
+          pts[i + 1]['longitude']?.toString() ??
+              pts[i + 1]['lng']?.toString() ??
+              '',
+        );
+        if (lat1 != null &&
+            lon1 != null &&
+            lat2 != null &&
+            lon2 != null &&
+            (lat1 != 0 || lon1 != 0) &&
+            (lat2 != 0 || lon2 != 0)) {
+          distKm += _distanceKm(LatLng(lat1, lon1), LatLng(lat2, lon2));
+        }
+      }
+    }
+
+    final firstDist = double.tryParse(first['distance']?.toString() ?? '');
+    final lastDist = double.tryParse(last['distance']?.toString() ?? '');
+    if (firstDist != null && lastDist != null && lastDist > firstDist) {
+      distKm = lastDist - firstDist;
+    }
+
+    return {
+      'badge': 'Trip $tripIndex',
+      'distance': '${distKm.toStringAsFixed(2)} Km',
+      'maxSpeed': '${maxSpeedKmph.toStringAsFixed(1)} Kmph',
+      'startTime': formatDisplayTime(rawStart.toString()),
+      'duration': durationStr,
+      'endTime': formatDisplayTime(rawEnd.toString()),
+    };
+  }
+
+  String _calculateDurationString(String startStr, String endStr) {
+    final sDt = _parseTimestamp(startStr);
+    final eDt = _parseTimestamp(endStr);
+    if (sDt != null && eDt != null) {
+      return _formatDuration(eDt.difference(sDt));
+    }
+    return '00h 00m';
   }
 
   /// Load vehicle statistics from API (GET /statistics)
@@ -613,6 +1300,7 @@ class VehicleDetailController extends GetxController {
         map['odometer']?.toString() ??
         map['odo']?.toString() ??
         map['today_odo']?.toString() ??
+        map['total_distance']?.toString() ??
         '0 km';
 
     statisticsData.value = {
@@ -627,6 +1315,24 @@ class VehicleDetailController extends GetxController {
       'Engine Hours': engHrs,
       'Odometer': odo.contains('km') ? odo : '$odo km',
     };
+
+    final odoDigits = _extractOdometerDigits(odo);
+    if (odoDigits != '0000000' ||
+        vehicleDetail.value.odometerDigits == '0000000') {
+      vehicleDetail.update((val) {
+        if (val != null) {
+          vehicleDetail.value = val.copyWith(
+            odometerDigits: odoDigits,
+            todayOdoKm:
+                (val.todayOdoKm == '0' ||
+                    val.todayOdoKm.isEmpty ||
+                    val.todayOdoKm == '0 km')
+                ? (odo.contains('km') ? odo : '$odo km')
+                : val.todayOdoKm,
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -753,12 +1459,38 @@ class VehicleDetailController extends GetxController {
 
   void initPlaybackRoute() {
     _buildPlaybackSpeedSeries();
+
+    // FIX: a Home list refresh re-fetches the same history. If playback is
+    // running or paused mid-route and the new route is the same trip (same
+    // start, old route is a prefix), keep the car where it is instead of
+    // stopping it and sending it back to the start.
+    final newPoints = getActiveRoutePoints();
+    if (_canContinuePlayback(newPoints)) {
+      _playbackRoutePoints = List<LatLng>.from(newPoints);
+      return;
+    }
+
     placeMovingMarkerAtStart();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (selectedTopTab.value == 0) {
         fitHistoryRoute();
       }
     });
+  }
+
+  bool _canContinuePlayback(List<LatLng> newPoints) {
+    final old = _playbackRoutePoints;
+    final inProgress =
+        isPlaying.value ||
+        (playbackProgress.value > 0.0 && playbackProgress.value < 1.0);
+    if (!inProgress || old.length < 2 || newPoints.length < old.length) {
+      return false;
+    }
+    bool same(LatLng a, LatLng b) =>
+        (a.latitude - b.latitude).abs() < 1e-7 &&
+        (a.longitude - b.longitude).abs() < 1e-7;
+    return same(old.first, newPoints.first) &&
+        same(old.last, newPoints[old.length - 1]);
   }
 
   void placeMovingMarkerAtStart() {
@@ -768,6 +1500,7 @@ class VehicleDetailController extends GetxController {
     _movingSegmentIndex = 0;
     _movingSegmentFraction = 0.0;
     playbackProgress.value = 0.0;
+    currentPlaybackSpeedKmph.value = 0.0;
     _lastCameraUpdateMs = 0;
     if (points.isEmpty) {
       movingMarkerPosition.value = null;
@@ -825,6 +1558,7 @@ class VehicleDetailController extends GetxController {
 
     isPlaying.value = true;
     _lastCameraUpdateMs = 0;
+    _lastPlaybackTickAt = null;
     _movingMarkerTimer = Timer.periodic(_playbackFramePeriod, (_) {
       advanceFrame();
     });
@@ -834,6 +1568,7 @@ class VehicleDetailController extends GetxController {
     _movingMarkerTimer?.cancel();
     _movingMarkerTimer = null;
     isPlaying.value = false;
+    currentPlaybackSpeedKmph.value = 0.0;
   }
 
   void replay() {
@@ -941,11 +1676,17 @@ class VehicleDetailController extends GetxController {
       return;
     }
 
-    final totalKm = _getTotalDistanceKm(route);
-    final calculatedMps = (totalKm * 1000.0) / 30.0;
-    final baseMps = math.max(60.0, calculatedMps);
+    // Real elapsed time per frame (web timers can fire late).
+    final now = DateTime.now();
+    final dt = _lastPlaybackTickAt == null
+        ? _playbackTickSeconds
+        : (now.difference(_lastPlaybackTickAt!).inMicroseconds / 1000000.0)
+              .clamp(0.001, 0.1);
+    _lastPlaybackTickAt = now;
+
+    final baseMps = _playbackBaseMps(route);
     final effectiveMps = baseMps * playbackSpeedMultiplier.value;
-    double distanceBudgetMeters = effectiveMps * _playbackTickSeconds;
+    double distanceBudgetMeters = effectiveMps * dt;
 
     while (distanceBudgetMeters > 0) {
       if (_movingSegmentIndex >= route.length - 1) {
@@ -961,6 +1702,7 @@ class VehicleDetailController extends GetxController {
         );
         playbackProgress.value = 1.0;
         traveledRoutePoints.assignAll(List<LatLng>.from(route));
+        currentPlaybackSpeedKmph.value = 0.0;
         stopMovingMarker();
         return;
       }
@@ -991,6 +1733,7 @@ class VehicleDetailController extends GetxController {
       movingMarkerPosition.value = route.last;
       playbackProgress.value = 1.0;
       traveledRoutePoints.assignAll(List<LatLng>.from(route));
+      currentPlaybackSpeedKmph.value = 0.0;
       stopMovingMarker();
       return;
     }
@@ -1012,6 +1755,16 @@ class VehicleDetailController extends GetxController {
     );
     playbackProgress.value = _getProgressFromMarkerPosition(route);
 
+    // Update dynamic playback speed
+    if (_playbackSpeedSeries.isNotEmpty &&
+        _movingSegmentIndex < _playbackSpeedSeries.length) {
+      // Show the speed the vehicle actually recorded at this point.
+      final s = _playbackSpeedSeries[_movingSegmentIndex];
+      currentPlaybackSpeedKmph.value = s > 0 ? s : 0.0;
+    } else {
+      currentPlaybackSpeedKmph.value = 0.0;
+    }
+
     // Actively draw the route behind the moving vehicle!
     if (_movingSegmentIndex < route.length) {
       final passed = route.sublist(0, _movingSegmentIndex + 1);
@@ -1029,6 +1782,21 @@ class VehicleDetailController extends GetxController {
         );
       } catch (_) {}
     }
+  }
+
+  /// 1x playback speed in m/s, derived from the map's current zoom so the
+  /// marker moves ~[_playbackScreenPxPerSec] px/s on screen.
+  double _playbackBaseMps(List<LatLng> route) {
+    double zoom = 14.0;
+    try {
+      zoom = historyMapController.camera.zoom;
+    } catch (_) {}
+    final lat = (movingMarkerPosition.value ?? route.first).latitude;
+    final metersPerPixel =
+        156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
+    return (metersPerPixel * _playbackScreenPxPerSec)
+        .clamp(_playbackMinMps, _playbackMaxMps)
+        .toDouble();
   }
 
   double _getProgressFromMarkerPosition([List<LatLng>? routePoints]) {
@@ -1116,28 +1884,25 @@ class VehicleDetailController extends GetxController {
     if (imei.isEmpty || _liveDisposed) return;
     activeImei = imei;
 
+    // FIX: every full start opens a new session. Any older in-flight start /
+    // poll / road request that finishes later is ignored instead of
+    // overwriting the current motion state.
+    final int session = reconnectOnly ? _liveSessionId : ++_liveSessionId;
+
     if (!reconnectOnly) {
+      _liveTrackingImei = imei;
       _stopLiveAnimationLoop();
+      _stopLivePollingTimer();
       await _liveTrackWs.disconnect();
-      _roadQueue.clear();
-      _gpsTrace.clear();
-      _lastRoadCorridor.clear();
-      _roadFetchInFlight = false;
-      _pendingRoadTarget = null;
-      _pathLat = 0.0;
-      _pathLng = 0.0;
-      _corrLat = 0.0;
-      _corrLng = 0.0;
-      _lockedBearing = 0.0;
-      _uiHeading = 0.0;
-      _hasLiveHeading = false;
-      _liveTarget = null;
+      _liveWaypoints.clear();
+      _liveWaypointIndex = 0;
+      _liveWaypointFraction = 0.0;
+      _currentLiveSpeedMs = 0.0;
       _lastAcceptedGps = null;
       _lastGpsTime = null;
       _lastReportedSpeedKmh = 0.0;
-      _lastInferredSpeedKmh = 0.0;
-      _isMovingVehicle = false;
-      _glideSpeedMs = 0.0;
+      _roadFetchInFlight = false;
+      _lastLiveFixTime = null;
     }
 
     try {
@@ -1147,6 +1912,8 @@ class VehicleDetailController extends GetxController {
         ApiEndPoints.liveTrackSnapshot,
         queryParameters: {'imei': imei.trim()},
       );
+
+      if (_liveDisposed || session != _liveSessionId) return;
 
       final rawBody = response.data;
       if (rawBody is! Map) return;
@@ -1159,11 +1926,178 @@ class VehicleDetailController extends GetxController {
       _wsInfo = data.websocket;
 
       final pos = data.currentPosition;
+      final todayStats = data.todayStatistics;
       if (pos != null) {
         final lat = double.tryParse(pos.latitude ?? '');
         final lng = double.tryParse(pos.longitude ?? '');
-        final speed = pos.speed ?? 0.0;
+        final bool isStale = _isStaleFix(pos.deviceTime);
+        final speed = isStale ? 0.0 : (pos.speed ?? 0.0);
+        final rawOdo =
+            pos.odometer ??
+            data.vehicleInfo?.totalKilometersTraveled ??
+            body['data']?['current_position']?['odometer'] ??
+            body['data']?['current_position']?['total_distance'] ??
+            body['data']?['current_position']?['kilometer'] ??
+            body['data']?['vehicle_info']?['total_kilometers_traveled'] ??
+            body['data']?['vehicle_info']?['odometer'] ??
+            body['data']?['today_statistics']?['odometer'] ??
+            body['data']?['today_statistics']?['total_kilometers_today'] ??
+            todayStats?.totalKilometersToday ??
+            pos.kilometer;
+
+        final odoDigits = _extractOdometerDigits(
+          rawOdo,
+          fallback: vehicleDetail.value.odometerDigits,
+        );
+
+        final dynamicSensors = _buildDynamicSensors(
+          pos: pos,
+          rawMap: body['data'] is Map
+              ? Map<String, dynamic>.from(body['data'])
+              : null,
+          isStale: isStale,
+        );
+
+        vehicleDetail.update((val) {
+          if (val != null) {
+            vehicleDetail.value = VehicleDetailData(
+              vehicleNumber:
+                  data.vehicleInfo?.vehicleNumber ?? val.vehicleNumber,
+              odometerDigits: odoDigits,
+              timestamp: pos.deviceTime ?? val.timestamp,
+              distanceKm: pos.kilometer != null
+                  ? '${pos.kilometer} km'
+                  : (todayStats?.totalKilometersToday != null
+                        ? '${todayStats!.totalKilometersToday!.toStringAsFixed(1)} km'
+                        : val.distanceKm),
+              speedKmph: speed.toInt(),
+              coordinates: (lat != null && lng != null)
+                  ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
+                  : val.coordinates,
+              latitude: lat ?? val.latitude,
+              longitude: lng ?? val.longitude,
+              address: val.address,
+              deviceTime: pos.deviceTime ?? val.deviceTime,
+              serverTime: pos.lastUpdate ?? val.serverTime,
+              runningDuration:
+                  todayStats?.displayRunningDuration ?? val.runningDuration,
+              idleDuration: todayStats?.displayIdleDuration ?? val.idleDuration,
+              stoppedDuration:
+                  todayStats?.displayStoppedDuration ?? val.stoppedDuration,
+              inactiveDuration:
+                  todayStats?.displayInactiveDuration ?? val.inactiveDuration,
+              avgSpeedKmph: todayStats?.avgSpeed != null
+                  ? todayStats!.avgSpeed!.toInt().toString()
+                  : val.avgSpeedKmph,
+              maxSpeedKmph: todayStats?.maxSpeed != null
+                  ? todayStats!.maxSpeed!.toInt().toString()
+                  : val.maxSpeedKmph,
+              todayOdoKm: todayStats?.totalKilometersToday != null
+                  ? todayStats!.totalKilometersToday!.toStringAsFixed(1)
+                  : (pos.kilometer ?? val.todayOdoKm),
+              sensors: dynamicSensors,
+            );
+          }
+        });
+
+        if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
+          final location = LatLng(lat, lng);
+          _lastLiveUpdateReceivedAt = DateTime.now();
+
+          if (reconnectOnly && _liveWaypoints.isNotEmpty) {
+            _onLiveDevicePosition(
+              location,
+              speed,
+              status: isStale ? 'stale' : pos.derivedStatus,
+              deviceTime: pos.deviceTime,
+            );
+          } else {
+            _isOlderFix(pos.deviceTime); // records the fix time
+            _snapLiveMarkerTo(location, speed);
+            isLiveMoving.value =
+                !isStale &&
+                (speed > 0 || (pos.derivedStatus.toLowerCase() == 'running'));
+            if (isLiveLocked.value) {
+              recenterLiveMap();
+            }
+          }
+        }
+      }
+
+      if (!reconnectOnly) {
+        _startLiveAnimationLoop();
+        _startLivePollingTimer(imei);
+        await _connectLiveWebSocket(imei);
+      }
+    } catch (e) {
+      debugPrint('[LiveTrack] Error starting live tracking: $e');
+    } finally {
+      if (!reconnectOnly) isLoading.value = false;
+      // FIX: the animation loop was stopped at the top of a full start; if the
+      // snapshot failed or returned early, it was never restarted and the
+      // marker froze. Restart it (no API involved).
+      if (!reconnectOnly &&
+          !_liveDisposed &&
+          session == _liveSessionId &&
+          _liveAnimationTimer == null) {
+        _startLiveAnimationLoop();
+      }
+    }
+  }
+
+  void _startLivePollingTimer(String imei) {
+    _stopLivePollingTimer();
+    _livePollingTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (_liveDisposed || activeImei.isEmpty || selectedTopTab.value != -1) {
+        return;
+      }
+      final elapsedSec = DateTime.now()
+          .difference(_lastLiveUpdateReceivedAt)
+          .inSeconds;
+      if (elapsedSec >= 4) {
+        await _pollLiveSnapshot(imei);
+      }
+    });
+  }
+
+  void _stopLivePollingTimer() {
+    _livePollingTimer?.cancel();
+    _livePollingTimer = null;
+  }
+
+  Future<void> _pollLiveSnapshot(String imei) async {
+    final int session = _liveSessionId;
+    try {
+      final response = await DioClient().get(
+        ApiEndPoints.liveTrackSnapshot,
+        queryParameters: {'imei': imei.trim()},
+      );
+
+      if (_liveDisposed || session != _liveSessionId) return;
+
+      final rawBody = response.data;
+      if (rawBody is! Map) return;
+      final body = Map<String, dynamic>.from(rawBody);
+      final snapshot = LiveTrackSnapshotModel.fromJson(body);
+      final data = snapshot.data;
+      if (data == null) return;
+
+      final pos = data.currentPosition;
+      final todayStats = data.todayStatistics;
+      if (pos != null) {
+        final lat = double.tryParse(pos.latitude ?? '');
+        final lng = double.tryParse(pos.longitude ?? '');
+        final bool isStale = _isStaleFix(pos.deviceTime);
+        final speed = isStale ? 0.0 : (pos.speed ?? 0.0);
         final odo = pos.odometer?.toString() ?? '0';
+
+        final dynamicSensors = _buildDynamicSensors(
+          pos: pos,
+          rawMap: body['data'] is Map
+              ? Map<String, dynamic>.from(body['data'])
+              : null,
+          isStale: isStale,
+        );
 
         vehicleDetail.update((val) {
           if (val != null) {
@@ -1176,7 +2110,9 @@ class VehicleDetailController extends GetxController {
               timestamp: pos.deviceTime ?? val.timestamp,
               distanceKm: pos.kilometer != null
                   ? '${pos.kilometer} km'
-                  : val.distanceKm,
+                  : (todayStats?.totalKilometersToday != null
+                        ? '${todayStats!.totalKilometersToday!.toStringAsFixed(1)} km'
+                        : val.distanceKm),
               speedKmph: speed.toInt(),
               coordinates: (lat != null && lng != null)
                   ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
@@ -1186,62 +2122,40 @@ class VehicleDetailController extends GetxController {
               address: val.address,
               deviceTime: pos.deviceTime ?? val.deviceTime,
               serverTime: pos.lastUpdate ?? val.serverTime,
-              runningDuration: val.runningDuration,
-              idleDuration: val.idleDuration,
-              stoppedDuration: val.stoppedDuration,
-              inactiveDuration: val.inactiveDuration,
-              avgSpeedKmph: val.avgSpeedKmph,
-              maxSpeedKmph: val.maxSpeedKmph,
-              todayOdoKm: val.todayOdoKm,
-              sensors: val.sensors,
+              runningDuration:
+                  todayStats?.displayRunningDuration ?? val.runningDuration,
+              idleDuration: todayStats?.displayIdleDuration ?? val.idleDuration,
+              stoppedDuration:
+                  todayStats?.displayStoppedDuration ?? val.stoppedDuration,
+              inactiveDuration:
+                  todayStats?.displayInactiveDuration ?? val.inactiveDuration,
+              avgSpeedKmph: todayStats?.avgSpeed != null
+                  ? todayStats!.avgSpeed!.toInt().toString()
+                  : val.avgSpeedKmph,
+              maxSpeedKmph: todayStats?.maxSpeed != null
+                  ? todayStats!.maxSpeed!.toInt().toString()
+                  : val.maxSpeedKmph,
+              todayOdoKm: todayStats?.totalKilometersToday != null
+                  ? todayStats!.totalKilometersToday!.toStringAsFixed(1)
+                  : (pos.kilometer ?? val.todayOdoKm),
+              sensors: dynamicSensors,
             );
           }
         });
 
         if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
           final location = LatLng(lat, lng);
-          if (reconnectOnly && _pathLat != 0.0) {
-            final current = LatLng(_pathLat + _corrLat, _pathLng + _corrLng);
-            final lag = _calculateDistance(current, location);
-            if (lag > _reconnectSnapMeters && _isForwardOf(location, current)) {
-              _snapLiveMarkerTo(location, speed);
-            } else if (lag > 1.0) {
-              _onLiveDevicePosition(location, speed, status: pos.derivedStatus);
-            }
-          } else {
-            _setPathPosition(location);
-            _liveTarget = location;
-            _lastAcceptedGps = location;
-            _lastGpsTime = DateTime.now();
-            _lastReportedSpeedKmh = speed;
-            _lastInferredSpeedKmh = speed;
-            _isMovingVehicle = speed > 0;
-            isLiveMoving.value = speed > 0;
-            _glideSpeedMs = speed > 0
-                ? (speed / 3.6).clamp(0.0, _maxGlideSpeedMs)
-                : 0.0;
-            _gpsTrace
-              ..clear()
-              ..add(location);
-
-            _requestRoadPath(location, force: true);
-            _publishLiveFrame(force: true);
-
-            if (isLiveLocked.value) {
-              recenterLiveMap();
-            }
-          }
+          _lastLiveUpdateReceivedAt = DateTime.now();
+          _onLiveDevicePosition(
+            location,
+            speed,
+            status: isStale ? 'stale' : pos.derivedStatus,
+            deviceTime: pos.deviceTime,
+          );
         }
       }
-
-      if (!reconnectOnly) {
-        _startLiveAnimationLoop();
-        await _connectLiveWebSocket(imei);
-      }
     } catch (e) {
-      debugPrint('[LiveTrack] Error starting live tracking: $e');
-    } finally {
-      if (!reconnectOnly) isLoading.value = false;
+      debugPrint('[LiveTrack] Fallback polling error: $e');
     }
   }
 
@@ -1251,6 +2165,7 @@ class VehicleDetailController extends GetxController {
       return;
     }
 
+    final int session = _liveSessionId;
     final connected = await _liveTrackWs.connect(
       imei: imei,
       websocketConfig: _wsConfig,
@@ -1263,6 +2178,7 @@ class VehicleDetailController extends GetxController {
       },
     );
 
+    if (session != _liveSessionId) return;
     isLiveTrackingConnected.value = connected;
   }
 
@@ -1334,12 +2250,14 @@ class VehicleDetailController extends GetxController {
 
       final lat = coords.$1;
       final lng = coords.$2;
-      final speed = _readSpeedFromMap(data)?.toDouble() ?? 0.0;
+      var speed = _readSpeedFromMap(data)?.toDouble() ?? 0.0;
       final course = _readCourseFromMap(data);
 
       debugPrint(
         '[LiveTrack] Device Update -> Lat: $lat, Lng: $lng, Speed: $speed km/h, Course: $course',
       );
+
+      _lastLiveUpdateReceivedAt = DateTime.now();
 
       Map<String, dynamic> map = data;
       if (data['current_position'] is Map) {
@@ -1348,27 +2266,50 @@ class VehicleDetailController extends GetxController {
         map = Map<String, dynamic>.from(data['data']);
       }
 
-      final odo =
-          map['odometer']?.toString() ?? vehicleDetail.value.odometerDigits;
-      final devTime =
-          map['devicetime']?.toString() ??
-          map['device_time']?.toString() ??
-          vehicleDetail.value.deviceTime;
+      final todayMap = (data['today_statistics'] is Map)
+          ? Map<String, dynamic>.from(data['today_statistics'])
+          : ((data['todayStatistics'] is Map)
+                ? Map<String, dynamic>.from(data['todayStatistics'])
+                : null);
+
+      final rawOdo =
+          map['odometer'] ??
+          map['total_distance'] ??
+          map['total_kilometers_traveled'] ??
+          map['kilometer'] ??
+          todayMap?['total_kilometers_today'] ??
+          todayMap?['odometer'];
+      final odo = _extractOdometerDigits(
+        rawOdo,
+        fallback: vehicleDetail.value.odometerDigits,
+      );
+      final rawDevTime =
+          map['devicetime']?.toString() ?? map['device_time']?.toString();
+      final devTime = rawDevTime ?? vehicleDetail.value.deviceTime;
+      final bool isStale = _isStaleFix(rawDevTime);
+      if (isStale) speed = 0.0;
       final srvTime =
           map['last_update']?.toString() ??
           map['server_time']?.toString() ??
           vehicleDetail.value.serverTime;
       final km = map['kilometer']?.toString();
 
+      final dynamicSensors = _buildDynamicSensors(
+        rawMap: map,
+        isStale: isStale,
+      );
+
       vehicleDetail.update((val) {
         if (val != null) {
           vehicleDetail.value = VehicleDetailData(
             vehicleNumber: val.vehicleNumber,
-            odometerDigits: odo
-                .replaceAll(RegExp(r'[^0-9]'), '')
-                .padLeft(7, '0'),
+            odometerDigits: odo,
             timestamp: devTime.isNotEmpty ? devTime : val.timestamp,
-            distanceKm: km != null ? '$km km' : val.distanceKm,
+            distanceKm: km != null
+                ? '$km km'
+                : (todayMap?['total_kilometers_today'] != null
+                      ? '${todayMap!['total_kilometers_today']} km'
+                      : val.distanceKm),
             speedKmph: speed.toInt(),
             coordinates:
                 '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E',
@@ -1377,23 +2318,54 @@ class VehicleDetailController extends GetxController {
             address: val.address,
             deviceTime: devTime,
             serverTime: srvTime,
-            runningDuration: val.runningDuration,
-            idleDuration: val.idleDuration,
-            stoppedDuration: val.stoppedDuration,
-            inactiveDuration: val.inactiveDuration,
-            avgSpeedKmph: val.avgSpeedKmph,
-            maxSpeedKmph: val.maxSpeedKmph,
-            todayOdoKm: val.todayOdoKm,
-            sensors: val.sensors,
+            runningDuration:
+                todayMap?['running_duration']?.toString() ??
+                todayMap?['display_running_duration']?.toString() ??
+                val.runningDuration,
+            idleDuration:
+                todayMap?['idle_duration']?.toString() ??
+                todayMap?['display_idle_duration']?.toString() ??
+                val.idleDuration,
+            stoppedDuration:
+                todayMap?['stopped_duration']?.toString() ??
+                todayMap?['display_stopped_duration']?.toString() ??
+                val.stoppedDuration,
+            inactiveDuration:
+                todayMap?['inactive_duration']?.toString() ??
+                todayMap?['display_inactive_duration']?.toString() ??
+                val.inactiveDuration,
+            avgSpeedKmph:
+                todayMap?['avg_speed']?.toString() ??
+                todayMap?['average_speed']?.toString() ??
+                val.avgSpeedKmph,
+            maxSpeedKmph:
+                todayMap?['max_speed']?.toString() ??
+                todayMap?['top_speed']?.toString() ??
+                val.maxSpeedKmph,
+            todayOdoKm:
+                todayMap?['total_kilometers_today']?.toString() ??
+                km ??
+                val.todayOdoKm,
+            sensors: dynamicSensors,
           );
         }
       });
 
+      final statusStr = isStale
+          ? 'stale'
+          : (speed > 0
+                ? 'Running'
+                : (map['status']?.toString() ??
+                      (map['ignition'] == 1 || map['ignition'] == '1'
+                          ? 'Idle'
+                          : 'Stopped')));
+
       _onLiveDevicePosition(
         LatLng(lat, lng),
         speed,
-        status: speed > 0 ? 'Running' : 'Stopped',
+        status: statusStr,
         courseDeg: course,
+        deviceTime: rawDevTime,
       );
     } catch (e) {
       debugPrint('[LiveTrack] Error handling live update: $e');
@@ -1405,16 +2377,21 @@ class VehicleDetailController extends GetxController {
     double speedKmH, {
     String? status,
     double? courseDeg,
+    String? deviceTime,
   }) {
+    // FIX: WebSocket, fallback polling and snapshot refreshes can deliver the
+    // same trip out of order. An older fix queued after a newer one makes the
+    // marker go backwards and then jump forward. Drop out-of-order fixes.
+    if (_isOlderFix(deviceTime)) {
+      debugPrint('[LiveTrack] Ignoring out-of-order fix ($deviceTime)');
+      return;
+    }
+
     final now = DateTime.now();
     final previousGps = _lastAcceptedGps;
     final previousGpsTime = _lastGpsTime;
 
-    final reportedKmH = speedKmH;
-    final inferredKmH = _inferSpeedKmh(location, speedKmH, now);
-    _lastReportedSpeedKmh = reportedKmH;
-    _lastInferredSpeedKmh = inferredKmH;
-
+    _lastReportedSpeedKmh = speedKmH;
     if (previousGpsTime != null) {
       final interval = now.difference(previousGpsTime).inMilliseconds / 1000.0;
       if (interval >= 0.8 && interval < 60.0) {
@@ -1425,321 +2402,253 @@ class VehicleDetailController extends GetxController {
     final movedM = previousGps == null
         ? 0.0
         : _calculateDistance(previousGps, location);
-    _isMovingVehicle = reportedKmH > 0 || inferredKmH > 1.5 || movedM > 2.0;
-    isLiveMoving.value = _isMovingVehicle;
+    final isMoving =
+        speedKmH > 0 ||
+        (status != null && status.toLowerCase() == 'running') ||
+        movedM > 1.5;
+    isLiveMoving.value = isMoving;
 
-    if (!_isMovingVehicle) {
-      if (previousGps != null && movedM < _stoppedGpsDeadbandM) {
-        _lastGpsTime = now;
-        return;
-      }
-      if (!_hasLiveHeading &&
-          courseDeg != null &&
-          courseDeg >= 0 &&
-          courseDeg <= 360) {
-        _setLockedBearing(courseDeg % 360);
-      }
-      if (_pathLat == 0.0 && _pathLng == 0.0) {
-        _setPathPosition(location);
-      }
-      _lastAcceptedGps = location;
-      _lastGpsTime = now;
-      _liveTarget = location;
-      _requestRoadPath(location, force: true);
-      return;
-    }
-
-    if (previousGps != null && _isLikelySnapBack(location, previousGps)) {
-      _lastGpsTime = now;
-      return;
-    }
-
-    _updateHeadingFromMovement(
-      location,
-      previousGps: previousGps,
-      courseDeg: courseDeg,
-    );
-
-    if (_pathLat == 0.0 && _pathLng == 0.0) {
-      _setPathPosition(location);
-    }
     _lastAcceptedGps = location;
     _lastGpsTime = now;
-    _liveTarget = location;
 
-    _requestRoadPath(location, force: _roadQueue.length < 2);
+    if (_liveWaypoints.isEmpty || liveMarkerPosition.value == null) {
+      _snapLiveMarkerTo(location, speedKmH, courseDeg: courseDeg);
+      return;
+    }
+
+    final anchor = _liveWaypoints.last;
+    final dist = _calculateDistance(anchor, location);
+
+    if (dist > 3000.0) {
+      _snapLiveMarkerTo(location, speedKmH, courseDeg: courseDeg);
+      return;
+    }
+
+    if (dist >= 0.5) {
+      _liveWaypoints.add(location);
+      _requestRoadPath(anchor, location);
+    }
   }
 
-  void _snapLiveMarkerTo(LatLng location, double speedKmH) {
-    _roadQueue.clear();
-    _gpsTrace.clear();
-    _setPathPosition(location);
-    _liveTarget = location;
+  /// Returns true when [deviceTime] is older than the newest fix already
+  /// accepted. Otherwise records it as the newest fix. Unparseable or missing
+  /// times are never treated as stale.
+  bool _isOlderFix(String? deviceTime) {
+    final t = _parseFixTime(deviceTime);
+    if (t == null) return false;
+    final last = _lastLiveFixTime;
+    if (last != null && t.isBefore(last)) return true;
+    _lastLiveFixTime = t;
+    return false;
+  }
+
+  /// True when the device time is older than [_liveStaleAfter].
+  /// Missing / unparseable times and future times are treated as fresh.
+  bool _isStaleFix(String? deviceTime) {
+    final t = _parseFixTime(deviceTime);
+    if (t == null) return false;
+    final age = DateTime.now().difference(t);
+    return age > _liveStaleAfter;
+  }
+
+  DateTime? _parseFixTime(String? raw) {
+    if (raw == null) return null;
+    final s = raw.trim();
+    if (s.isEmpty || s == 'null' || s == 'N/A') return null;
+
+    // Epoch seconds / milliseconds
+    if (RegExp(r'^\d{9,13}$').hasMatch(s)) {
+      final n = int.tryParse(s);
+      if (n == null) return null;
+      return DateTime.fromMillisecondsSinceEpoch(s.length >= 12 ? n : n * 1000);
+    }
+
+    // ISO style: 2026-09-29 13:01:05 / 2026-09-29T13:01:05Z
+    final iso = DateTime.tryParse(s);
+    if (iso != null) return iso;
+
+    // dd-MM-yyyy HH:mm[:ss] [AM/PM]
+    final m = RegExp(
+      r'^(\d{1,2})[-/](\d{1,2})[-/](\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?$',
+    ).firstMatch(s);
+    if (m == null) return null;
+    final day = int.parse(m.group(1)!);
+    final month = int.parse(m.group(2)!);
+    final year = int.parse(m.group(3)!);
+    var hour = int.parse(m.group(4)!);
+    final minute = int.parse(m.group(5)!);
+    final second = int.tryParse(m.group(6) ?? '0') ?? 0;
+    final ampm = m.group(7)?.toUpperCase();
+    if (ampm == 'PM' && hour < 12) hour += 12;
+    if (ampm == 'AM' && hour == 12) hour = 0;
+    return DateTime(year, month, day, hour, minute, second);
+  }
+
+  void _snapLiveMarkerTo(
+    LatLng location,
+    double speedKmH, {
+    double? courseDeg,
+  }) {
+    _liveWaypoints
+      ..clear()
+      ..add(location);
+    _liveWaypointIndex = 0;
+    _liveWaypointFraction = 0.0;
+    _currentLiveSpeedMs = speedKmH > 0 ? (speedKmH / 3.6) : 0.0;
+    _lastReportedSpeedKmh = speedKmH;
     _lastAcceptedGps = location;
     _lastGpsTime = DateTime.now();
-    _lastReportedSpeedKmh = speedKmH;
-    _lastInferredSpeedKmh = speedKmH;
-    _isMovingVehicle = speedKmH > 0;
-    isLiveMoving.value = speedKmH > 0;
-    _requestRoadPath(location, force: true);
-    _publishLiveFrame(force: true);
-  }
-
-  void _setPathPosition(LatLng p) {
-    _pathLat = p.latitude;
-    _pathLng = p.longitude;
-    _corrLat = 0.0;
-    _corrLng = 0.0;
+    final isMoving = speedKmH > 0;
+    isLiveMoving.value = isMoving;
+    liveMarkerPosition.value = location;
+    if (courseDeg != null && courseDeg >= 0) {
+      liveMarkerBearing.value = courseDeg;
+    }
+    if (isLiveLocked.value) {
+      _followLiveCamera(location);
+    }
   }
 
   void _startLiveAnimationLoop() {
     _stopLiveAnimationLoop();
-    _lastLiveTickStamp = Duration.zero;
-    _liveTicker = Ticker(_onLiveTick)..start();
+    _lastLiveTickTime = DateTime.now();
+    _liveAnimationTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (_liveDisposed) return;
+      final now = DateTime.now();
+      final dt = _lastLiveTickTime == null
+          ? 0.016
+          : (now.difference(_lastLiveTickTime!).inMicroseconds / 1000000.0)
+                .clamp(0.001, 0.1);
+      _lastLiveTickTime = now;
+      _advanceLiveFrame(dt);
+    });
   }
 
   void _stopLiveAnimationLoop() {
-    final t = _liveTicker;
-    _liveTicker = null;
-    if (t != null) {
-      t.stop(canceled: true);
-      t.dispose();
-    }
+    _liveAnimationTimer?.cancel();
+    _liveAnimationTimer = null;
+    _lastLiveTickTime = null;
   }
 
-  void _onLiveTick(Duration elapsed) {
-    if (_liveDisposed) return;
+  void _advanceLiveFrame(double dt) {
+    if (_liveWaypoints.isEmpty) return;
 
-    var dt = _lastLiveTickStamp == Duration.zero
-        ? 1 / 60
-        : (elapsed - _lastLiveTickStamp).inMicroseconds / 1000000.0;
-    _lastLiveTickStamp = elapsed;
-    dt = dt.clamp(1 / 240, 0.1);
-    _glide(dt);
-  }
-
-  void _glide(double dt) {
-    if (_pathLat == 0.0 && _pathLng == 0.0) return;
-    if (_liveTarget == null) return;
-
-    _decayCorrection(dt);
-
-    if (_isMovingVehicle) {
-      final pos = LatLng(_pathLat, _pathLng);
-      final remaining = _remainingPathMeters(pos);
-      final target = _targetSpeedMs(remaining);
-
-      final alpha = 1.0 - math.exp(-dt / _speedTau);
-      _glideSpeedMs += (target - _glideSpeedMs) * alpha;
-      if (_glideSpeedMs < _minRollSpeedMs && remaining > 0.5) {
-        _glideSpeedMs = _minRollSpeedMs;
+    if (_liveWaypoints.length == 1) {
+      liveMarkerPosition.value = _liveWaypoints.first;
+      if (isLiveLocked.value) {
+        _followLiveCamera(_liveWaypoints.first);
       }
-      if (_glideSpeedMs < 0) _glideSpeedMs = 0;
-
-      var step = _glideSpeedMs * dt;
-      if (step > remaining) step = remaining;
-
-      if (step > 0.0001) {
-        if (_roadQueue.isNotEmpty) {
-          _advanceAlongRoad(step);
-        } else {
-          _bridgeForward(step);
-        }
-      }
-
-      _maybePrefetchRoad(remaining);
-    } else {
-      _creepWhileStopped(dt);
-    }
-
-    _updateLiveHeading(dt);
-    _publishLiveFrame();
-  }
-
-  void _decayCorrection(double dt) {
-    if (_corrLat == 0.0 && _corrLng == 0.0) return;
-    final k = math.exp(-dt / _correctionTau);
-    _corrLat *= k;
-    _corrLng *= k;
-    if (_corrLat.abs() < 1e-9) _corrLat = 0.0;
-    if (_corrLng.abs() < 1e-9) _corrLng = 0.0;
-  }
-
-  double _targetSpeedMs(double remaining) {
-    final reported =
-        math.max(_lastReportedSpeedKmh, _lastInferredSpeedKmh) / 3.6;
-    final horizon = _expectedPingSec.clamp(1.5, 8.0);
-
-    var v = remaining / horizon;
-
-    if (reported > 0.4) {
-      v = v.clamp(reported * 0.6, reported * 1.8);
-    } else {
-      v = v.clamp(0.0, 14.0);
-    }
-
-    if (remaining < 2.0) {
-      v = math.min(v, math.max(remaining * 1.2, _minRollSpeedMs));
-    }
-
-    return v.clamp(0.0, _maxGlideSpeedMs);
-  }
-
-  void _advanceAlongRoad(double step) {
-    var pos = LatLng(_pathLat, _pathLng);
-    var remaining = step;
-
-    while (remaining > 0.001 && _roadQueue.isNotEmpty) {
-      final next = _roadQueue.first;
-      final dist = _calculateDistance(pos, next);
-
-      if (dist < 0.05) {
-        _roadQueue.removeAt(0);
-        continue;
-      }
-
-      if (dist <= remaining) {
-        pos = next;
-        remaining -= dist;
-        _roadQueue.removeAt(0);
-      } else {
-        final f = remaining / dist;
-        pos = LatLng(
-          pos.latitude + (next.latitude - pos.latitude) * f,
-          pos.longitude + (next.longitude - pos.longitude) * f,
-        );
-        remaining = 0;
-      }
-    }
-
-    _pathLat = pos.latitude;
-    _pathLng = pos.longitude;
-  }
-
-  void _bridgeForward(double step) {
-    final t = _liveTarget;
-    if (t == null) return;
-
-    final pos = LatLng(_pathLat, _pathLng);
-    final dist = _calculateDistance(pos, t);
-    if (dist < 0.2) return;
-
-    final bearing = _getBearing(pos, t);
-    _lockedBearing = bearing;
-    if (!_hasLiveHeading) {
-      _uiHeading = bearing;
-      _hasLiveHeading = true;
-    }
-
-    final s = math.min(step, dist);
-    final next = _offsetMeters(pos, bearing, s);
-    _pathLat = next.latitude;
-    _pathLng = next.longitude;
-  }
-
-  void _creepWhileStopped(double dt) {
-    _glideSpeedMs = 0.0;
-    if (_roadQueue.isEmpty) return;
-
-    final pos = LatLng(_pathLat, _pathLng);
-    final remaining = _remainingPathMeters(pos);
-    if (remaining <= 1.5) return;
-
-    _advanceAlongRoad(math.min(_stoppedCreepMs * dt, remaining));
-  }
-
-  void _maybePrefetchRoad(double remaining) {
-    final t = _liveTarget;
-    if (t == null) return;
-
-    final threshold = math.max(25.0, _glideSpeedMs * 3.0);
-    if (remaining < threshold || _roadQueue.length < 2) {
-      _requestRoadPath(t, force: _roadQueue.length < 2);
-    }
-  }
-
-  void _updateLiveHeading(double dt) {
-    if (_roadQueue.isNotEmpty) {
-      final ahead = _bearingLookAhead(
-        LatLng(_pathLat, _pathLng),
-        _headingLookAheadM,
-      );
-      if (ahead != null) _lockedBearing = ahead;
-    }
-
-    if (!_hasLiveHeading) return;
-
-    final delta = _shortestBearingDelta(_uiHeading, _lockedBearing);
-    final maxStep = _maxUiHeadingDegPerSec * dt;
-    final step = delta.clamp(-maxStep, maxStep);
-    if (step.abs() < 0.02) return;
-
-    _uiHeading = _normalizeBearing(_uiHeading + step);
-  }
-
-  double? _bearingLookAhead(LatLng from, double meters) {
-    if (_roadQueue.isEmpty) return null;
-
-    var traveled = 0.0;
-    var prev = from;
-    LatLng? pick;
-
-    for (final p in _roadQueue) {
-      traveled += _calculateDistance(prev, p);
-      prev = p;
-      pick = p;
-      if (traveled >= meters) break;
-    }
-
-    pick ??= _roadQueue.last;
-    if (_calculateDistance(from, pick) < 0.2) return null;
-    return _getBearing(from, pick);
-  }
-
-  void _setLockedBearing(double bearing) {
-    bearing = _normalizeBearing(bearing);
-    _lockedBearing = bearing;
-    if (!_hasLiveHeading) {
-      _uiHeading = bearing;
-      _hasLiveHeading = true;
-    }
-  }
-
-  void _updateHeadingFromMovement(
-    LatLng location, {
-    LatLng? previousGps,
-    double? courseDeg,
-  }) {
-    if (courseDeg != null && courseDeg >= 0 && courseDeg <= 360) {
-      _setLockedBearing(courseDeg % 360);
       return;
     }
 
-    double? movementBearing;
-    if (previousGps != null &&
-        _calculateDistance(previousGps, location) >= 2.0) {
-      movementBearing = _getBearing(previousGps, location);
-    } else if (_pathLat != 0.0) {
-      final current = LatLng(_pathLat, _pathLng);
-      if (_calculateDistance(current, location) >= 2.0) {
-        movementBearing = _getBearing(current, location);
+    if (_liveWaypointIndex >= _liveWaypoints.length - 1) {
+      final dest = _liveWaypoints.last;
+      liveMarkerPosition.value = dest;
+      _currentLiveSpeedMs = 0.0;
+      if (isLiveLocked.value) {
+        _followLiveCamera(dest);
+      }
+      return;
+    }
+
+    // Compute remaining distance in waypoints
+    double remainingMeters = 0.0;
+    final a0 = _liveWaypoints[_liveWaypointIndex];
+    final b0 = _liveWaypoints[_liveWaypointIndex + 1];
+    final segDist0 = _calculateDistance(a0, b0);
+    final t0 = _liveWaypointFraction.clamp(0.0, 1.0);
+    remainingMeters += segDist0 * (1.0 - t0);
+    for (int i = _liveWaypointIndex + 1; i < _liveWaypoints.length - 1; i++) {
+      remainingMeters += _calculateDistance(
+        _liveWaypoints[i],
+        _liveWaypoints[i + 1],
+      );
+    }
+
+    // Determine target speed
+    final reportedMps = _lastReportedSpeedKmh > 0
+        ? (_lastReportedSpeedKmh / 3.6)
+        : 0.0;
+    final horizon = _expectedPingSec.clamp(1.5, 5.0);
+    final intervalMps = remainingMeters / horizon;
+
+    double targetMps;
+    if (reportedMps > 0.5) {
+      targetMps = math.max(reportedMps, intervalMps);
+    } else if (isLiveMoving.value || remainingMeters > 0.5) {
+      targetMps = math.max(3.0, intervalMps);
+    } else {
+      targetMps = math.max(0.5, remainingMeters);
+    }
+    targetMps = targetMps.clamp(0.5, 45.0);
+
+    // Smooth speed change
+    final alpha = 1.0 - math.exp(-dt / 0.25);
+    _currentLiveSpeedMs += (targetMps - _currentLiveSpeedMs) * alpha;
+    if (_currentLiveSpeedMs < 0.5 && remainingMeters > 0.1) {
+      _currentLiveSpeedMs = 0.5;
+    }
+
+    double distanceBudget = _currentLiveSpeedMs * dt;
+
+    // Advance along waypoint queue
+    while (distanceBudget > 0 &&
+        _liveWaypointIndex < _liveWaypoints.length - 1) {
+      final a = _liveWaypoints[_liveWaypointIndex];
+      final b = _liveWaypoints[_liveWaypointIndex + 1];
+      final segMeters = _calculateDistance(a, b);
+      if (segMeters <= 1e-4) {
+        _liveWaypointIndex++;
+        _liveWaypointFraction = 0.0;
+        continue;
+      }
+      final currentT = _liveWaypointFraction.clamp(0.0, 1.0);
+      final remainingSeg = segMeters * (1.0 - currentT);
+      if (distanceBudget >= remainingSeg) {
+        distanceBudget -= remainingSeg;
+        _liveWaypointIndex++;
+        _liveWaypointFraction = 0.0;
+      } else {
+        _liveWaypointFraction = (currentT + distanceBudget / segMeters).clamp(
+          0.0,
+          1.0,
+        );
+        distanceBudget = 0.0;
       }
     }
 
-    if (movementBearing != null) {
-      _setLockedBearing(movementBearing);
+    // Interpolate marker position & bearing
+    if (_liveWaypointIndex >= _liveWaypoints.length - 1) {
+      final dest = _liveWaypoints.last;
+      liveMarkerPosition.value = dest;
+      if (isLiveLocked.value) {
+        _followLiveCamera(dest);
+      }
+    } else {
+      final a = _liveWaypoints[_liveWaypointIndex];
+      final b = _liveWaypoints[_liveWaypointIndex + 1];
+      final t = _liveWaypointFraction.clamp(0.0, 1.0);
+      final interpolated = LatLng(
+        a.latitude + (b.latitude - a.latitude) * t,
+        a.longitude + (b.longitude - a.longitude) * t,
+      );
+      liveMarkerPosition.value = interpolated;
+
+      final targetBearing = _getBearing(a, b);
+      final prevBearing = liveMarkerBearing.value ?? targetBearing;
+      liveMarkerBearing.value = _lerpBearing(prevBearing, targetBearing, 0.25);
+
+      if (isLiveLocked.value) {
+        _followLiveCamera(interpolated);
+      }
     }
-  }
 
-  void _publishLiveFrame({bool force = false}) {
-    if (_pathLat == 0.0 && _pathLng == 0.0) return;
-    // Anchor position strictly on the road polyline
-    final point = LatLng(_pathLat, _pathLng);
-
-    liveMarkerPosition.value = point;
-    liveMarkerBearing.value = _uiHeading;
-
-    _followLiveCamera(point);
+    // Memory cleanup: trim passed waypoints
+    if (_liveWaypointIndex > 30) {
+      final keepFrom = _liveWaypointIndex;
+      _liveWaypoints.removeRange(0, keepFrom);
+      _liveWaypointIndex = 0;
+    }
   }
 
   void _followLiveCamera(LatLng point) {
@@ -1755,200 +2664,112 @@ class VehicleDetailController extends GetxController {
     } catch (_) {}
   }
 
-  void _requestRoadPath(LatLng to, {bool force = false}) {
-    _pushGpsTrace(to);
-    _pendingRoadTarget = to;
-
-    if (_pathLat == 0.0 && _pathLng == 0.0) return;
-    if (_roadFetchInFlight) return;
-
-    final from = LatLng(_pathLat, _pathLng);
-    final straightM = _calculateDistance(from, to);
-    if (straightM < 1.0 && !force) return;
-
+  Future<void> _requestRoadPath(LatLng from, LatLng to) async {
+    if (_calculateDistance(from, to) < 3.0 || _roadFetchInFlight) return;
     _roadFetchInFlight = true;
-    final requestId = ++_routeRequestId;
-    final fromPt = from;
-    final toPt = to;
-    final traceCopy = <LatLng>[..._gpsTrace];
+    final int session = _liveSessionId;
+    try {
+      final road = await _directionsService.getRoute(from, to, smooth: false);
+      if (_liveDisposed || session != _liveSessionId || road.length < 2) return;
 
-    () async {
-      try {
-        final road = await _directionsService.getRoute(
-          fromPt,
-          toPt,
-          smooth: false,
-        );
+      // Reject detours (one-way / wrong-side snapping) that would send the
+      // marker far away and back, which looks like a jump.
+      final straight = _calculateDistance(from, to);
+      if (_polylineLengthMeters(road) > straight * 2.5 + 150.0) return;
 
-        if (_liveDisposed) return;
-        if (requestId != _routeRequestId && _roadQueue.length >= 2) return;
-        if (road.length < 2) {
-          if (_lastRoadCorridor.length >= 2) {
-            final snapped = _closestPointOnPolyline(toPt, _lastRoadCorridor);
-            _liveTarget = snapped;
-          }
-          return;
-        }
-
-        _lastRoadCorridor
-          ..clear()
-          ..addAll(road);
-
-        var prepared = _decimatePath(road, _roadWaypointMinM);
-        if (prepared.length < 2) prepared = road;
-
-        liveRoadPolyline.assignAll(prepared);
-        _adoptRoadQueue(prepared);
-      } catch (e) {
-        debugPrint('[LiveTrack] Road fetch error: $e');
-      } finally {
-        _roadFetchInFlight = false;
-        final pending = _pendingRoadTarget;
-        if (!_liveDisposed &&
-            pending != null &&
-            _calculateDistance(pending, toPt) > 2.0) {
-          _requestRoadPath(pending, force: _roadQueue.length < 2);
+      // FIX: locate the exact from→to segment still in the queue. The old
+      // code replaced the whole queue from the marker's current index and
+      // kept the old fraction on a different segment, so the marker skipped
+      // ahead to the new road start.
+      int seg = -1;
+      for (int i = _liveWaypoints.length - 2; i >= 0; i--) {
+        if (_calculateDistance(_liveWaypoints[i], from) < 1.0 &&
+            _calculateDistance(_liveWaypoints[i + 1], to) < 1.0) {
+          seg = i;
+          break;
         }
       }
-    }();
+      if (seg < 0 || seg < _liveWaypointIndex) return; // already passed
+
+      // Road geometry between the two fixes (endpoints are the fixes themselves).
+      final interior = <LatLng>[];
+      for (int i = 1; i < road.length - 1; i++) {
+        final p = road[i];
+        if (_calculateDistance(p, from) < 1.0 ||
+            _calculateDistance(p, to) < 1.0) {
+          continue;
+        }
+        if (interior.isEmpty || _calculateDistance(interior.last, p) >= 0.6) {
+          interior.add(p);
+        }
+      }
+
+      if (seg > _liveWaypointIndex) {
+        // Marker hasn't reached this segment yet: splice road in place.
+        // Index and fraction stay valid, so there is no visual jump.
+        if (interior.isNotEmpty) {
+          _liveWaypoints.insertAll(seg + 1, interior);
+        }
+        return;
+      }
+
+      // Marker is currently on this segment: continue from where it is now.
+      final currentPos = liveMarkerPosition.value ?? from;
+      final roadNoEnd = road.length > 2
+          ? road.sublist(0, road.length - 1)
+          : road;
+      final ahead = _trimRouteAhead(
+        currentPos,
+        roadNoEnd,
+      ).where((p) => _calculateDistance(p, to) >= 1.0).toList();
+      final head = _liveWaypoints.sublist(0, seg);
+      final tail = _liveWaypoints.sublist(seg + 1); // starts with `to`
+      _liveWaypoints
+        ..clear()
+        ..addAll([...head, currentPos, ...ahead, ...tail]);
+      _liveWaypointIndex = head.length;
+      _liveWaypointFraction = 0.0;
+    } catch (e) {
+      debugPrint('[LiveTrack] Road fetch error: $e');
+    } finally {
+      _roadFetchInFlight = false;
+    }
   }
 
-  void _adoptRoadQueue(List<LatLng> path) {
-    if (path.length < 2) return;
-
-    final current = LatLng(_pathLat, _pathLng);
-    final onNew = _closestPointOnPolyline(current, path);
-    final ahead = _trimRouteAhead(onNew, path);
-    if (ahead.length < 2) return;
-
-    _roadQueue
-      ..clear()
-      ..addAll(ahead);
-
-    _pathLat = onNew.latitude;
-    _pathLng = onNew.longitude;
-    _corrLat = 0.0;
-    _corrLng = 0.0;
-  }
-
-  double _pathLengthMeters(List<LatLng> path) {
-    if (path.length < 2) return 0.0;
-    var total = 0.0;
-    for (var i = 1; i < path.length; i++) {
-      total += _calculateDistance(path[i - 1], path[i]);
+  double _polylineLengthMeters(List<LatLng> pts) {
+    double total = 0.0;
+    for (int i = 0; i < pts.length - 1; i++) {
+      total += _calculateDistance(pts[i], pts[i + 1]);
     }
     return total;
   }
 
-  double _remainingPathMeters(LatLng current) {
-    if (_roadQueue.isEmpty) {
-      if (_liveTarget == null) return 0.0;
-      return _calculateDistance(current, _liveTarget!);
-    }
-    var total = _calculateDistance(current, _roadQueue.first);
-    for (var i = 1; i < _roadQueue.length; i++) {
-      total += _calculateDistance(_roadQueue[i - 1], _roadQueue[i]);
-    }
-    return total;
-  }
+  List<LatLng> _trimRouteAhead(LatLng from, List<LatLng> route) {
+    if (route.isEmpty) return route;
+    if (route.length == 1) return List<LatLng>.from(route);
 
-  List<LatLng> _decimatePath(List<LatLng> path, double minMeters) {
-    if (path.length <= 2) return path;
-    final out = <LatLng>[path.first];
-    for (var i = 1; i < path.length - 1; i++) {
-      if (_calculateDistance(out.last, path[i]) >= minMeters) {
-        out.add(path[i]);
+    // FIX: pick the closest point on any segment (not just the segment after
+    // the closest vertex), so the projected start never lands ahead of the car.
+    var bestSeg = 0;
+    var bestDist = double.infinity;
+    var bestPoint = route.first;
+    for (var i = 0; i < route.length - 1; i++) {
+      final p = _projectOnSegment(from, route[i], route[i + 1]);
+      final d = _calculateDistance(from, p);
+      if (d < bestDist) {
+        bestDist = d;
+        bestSeg = i;
+        bestPoint = p;
       }
     }
-    if (_calculateDistance(out.last, path.last) >= 1.0 || out.length < 2) {
-      out.add(path.last);
-    } else {
-      out[out.length - 1] = path.last;
+
+    final out = <LatLng>[bestPoint];
+    for (var i = bestSeg + 1; i < route.length; i++) {
+      if (_calculateDistance(out.last, route[i]) >= 0.6) {
+        out.add(route[i]);
+      }
     }
     return out;
-  }
-
-  List<LatLng> _trimRouteToUpdate(List<LatLng> path, LatLng update) {
-    if (path.length < 2) return path;
-
-    var bestIdx = 0;
-    var bestDist = double.infinity;
-    for (var i = 0; i < path.length; i++) {
-      final d = _calculateDistance(path[i], update);
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = i;
-      }
-    }
-
-    final onSeg = bestIdx < path.length - 1
-        ? _projectOnSegment(update, path[bestIdx], path[bestIdx + 1])
-        : (bestIdx > 0
-              ? _projectOnSegment(update, path[bestIdx - 1], path[bestIdx])
-              : path[bestIdx]);
-
-    final out = <LatLng>[];
-    final endIdx = bestIdx < path.length - 1
-        ? bestIdx
-        : math.max(0, bestIdx - 1);
-    for (var i = 0; i <= endIdx; i++) {
-      out.add(path[i]);
-    }
-    if (out.isEmpty || _calculateDistance(out.last, onSeg) >= 0.5) {
-      out.add(onSeg);
-    } else {
-      out[out.length - 1] = onSeg;
-    }
-    return out.length >= 2 ? out : path;
-  }
-
-  void _pushGpsTrace(LatLng point) {
-    if (_gpsTrace.isNotEmpty &&
-        _calculateDistance(_gpsTrace.last, point) < 1.5) {
-      _gpsTrace[_gpsTrace.length - 1] = point;
-      return;
-    }
-    _gpsTrace.add(point);
-    while (_gpsTrace.length > _gpsTraceMaxPoints) {
-      _gpsTrace.removeAt(0);
-    }
-  }
-
-  List<LatLng> _orientPathWithTravel(List<LatLng> path) {
-    return path;
-  }
-
-  double? _pathBearingOverMeters(List<LatLng> path, double meters) {
-    if (path.length < 2) return null;
-    var traveled = 0.0;
-    var i = 1;
-    while (i < path.length && traveled < meters) {
-      traveled += _calculateDistance(path[i - 1], path[i]);
-      i++;
-    }
-    final end = path[math.min(i - 1, path.length - 1)];
-    if (_calculateDistance(path.first, end) < 2.0) {
-      return _getBearing(path[path.length - 2], path.last);
-    }
-    return _getBearing(path.first, end);
-  }
-
-  LatLng _closestPointOnPolyline(LatLng p, List<LatLng> poly) {
-    if (poly.isEmpty) return p;
-    if (poly.length == 1) return poly.first;
-
-    var best = poly.first;
-    var bestDist = _calculateDistance(p, best);
-
-    for (var i = 0; i < poly.length - 1; i++) {
-      final projected = _projectOnSegment(p, poly[i], poly[i + 1]);
-      final d = _calculateDistance(p, projected);
-      if (d < bestDist) {
-        bestDist = d;
-        best = projected;
-      }
-    }
-    return best;
   }
 
   LatLng _projectOnSegment(LatLng p, LatLng a, LatLng b) {
@@ -1967,104 +2788,6 @@ class VehicleDetailController extends GetxController {
     );
     return LatLng(ay + dy * t, ax + dx * t);
   }
-
-  List<LatLng> _trimRouteAhead(LatLng from, List<LatLng> route) {
-    if (route.isEmpty) return route;
-
-    var closestIdx = 0;
-    var closestDist = double.infinity;
-    for (var i = 0; i < route.length; i++) {
-      final d = _calculateDistance(from, route[i]);
-      if (d < closestDist) {
-        closestDist = d;
-        closestIdx = i;
-      }
-    }
-
-    final out = <LatLng>[];
-    var start = closestIdx;
-
-    if (closestIdx < route.length - 1) {
-      final projected = _projectOnSegment(
-        from,
-        route[closestIdx],
-        route[closestIdx + 1],
-      );
-      out.add(projected);
-      start = closestIdx + 1;
-    } else if (closestDist < 3.0) {
-      start = closestIdx + 1;
-    }
-
-    for (var i = start; i < route.length; i++) {
-      if (out.isEmpty || _calculateDistance(out.last, route[i]) >= 0.6) {
-        out.add(route[i]);
-      }
-    }
-    return out;
-  }
-
-  LatLng _offsetMeters(LatLng from, double bearingDeg, double meters) {
-    const metersPerLat = 111320.0;
-    final latRad = from.latitude * math.pi / 180;
-    final metersPerLng = 111320.0 * math.cos(latRad);
-    final rad = bearingDeg * math.pi / 180;
-    return LatLng(
-      from.latitude + (meters * math.cos(rad)) / metersPerLat,
-      from.longitude + (meters * math.sin(rad)) / metersPerLng,
-    );
-  }
-
-  bool _isForwardOf(LatLng point, LatLng origin) {
-    if (!_hasLiveHeading) return true;
-    final bearing = _getBearing(origin, point);
-    return _shortestBearingDelta(_lockedBearing, bearing).abs() <=
-        _maxBackwardBearingDeg;
-  }
-
-  bool _isBehind(LatLng current, LatLng point) {
-    if (!_hasLiveHeading) return false;
-    final bearing = _getBearing(current, point);
-    return _shortestBearingDelta(_lockedBearing, bearing).abs() >
-        _maxBackwardBearingDeg;
-  }
-
-  bool _isLikelySnapBack(LatLng location, LatLng previousGps) {
-    if (!_hasLiveHeading || _pathLat == 0.0) return false;
-
-    final animated = LatLng(_pathLat, _pathLng);
-    if (!_isBehind(animated, location)) return false;
-
-    final lagM = _calculateDistance(animated, location);
-    if (lagM < _snapBackMinLagMeters) return false;
-
-    final gpsStepM = _calculateDistance(previousGps, location);
-    if (gpsStepM < 1.0) return true;
-
-    final gpsMovingBackward =
-        !_isForwardOf(location, previousGps) &&
-        gpsStepM >= _reverseGpsStepMeters;
-    return !gpsMovingBackward;
-  }
-
-  double _shortestBearingDelta(double from, double to) {
-    return ((to - from + 540) % 360) - 180;
-  }
-
-  double _inferSpeedKmh(LatLng location, double reportedKmh, DateTime now) {
-    if (_lastAcceptedGps == null || _lastGpsTime == null) return reportedKmh;
-
-    final deltaM = _calculateDistance(_lastAcceptedGps!, location);
-    if (deltaM < 1.0) return reportedKmh;
-
-    final seconds = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
-    if (seconds <= 0) return reportedKmh;
-
-    final inferred = (deltaM / seconds) * 3.6;
-    return math.max(reportedKmh, inferred);
-  }
-
-  double _normalizeBearing(double bearing) => (bearing % 360 + 360) % 360;
 
   double _calculateDistance(LatLng p1, LatLng p2) {
     const radius = 6371000.0;
@@ -2110,7 +2833,12 @@ class VehicleDetailController extends GetxController {
   }
 
   void stopLiveTracking() {
+    // Invalidate any in-flight start/poll/road request so it can't restart
+    // timers or the socket after the user left the live tab.
+    _liveSessionId++;
+    _liveTrackingImei = null;
     _stopLiveAnimationLoop();
+    _stopLivePollingTimer();
     unawaited(_liveTrackWs.disconnect());
     isLiveTrackingConnected.value = false;
   }

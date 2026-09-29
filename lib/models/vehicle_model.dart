@@ -18,6 +18,7 @@ class Vehicle {
   final bool isIgnitionOn;
   final bool isLocked;
   final String deviceId;
+  final String odometer;
 
   Vehicle({
     required this.id,
@@ -35,6 +36,7 @@ class Vehicle {
     this.isIgnitionOn = false,
     this.isLocked = true,
     required this.deviceId,
+    this.odometer = '0',
   });
 
   bool get hasValidCoordinates {
@@ -73,6 +75,7 @@ class Vehicle {
       isIgnitionOn: isIgnitionOn,
       isLocked: isLocked,
       deviceId: deviceId,
+      odometer: odometer,
     );
   }
 
@@ -109,6 +112,16 @@ class Vehicle {
       }
     }
 
+    final rawOdo = json['odometer'] ??
+        json['total_distance'] ??
+        json['total_distance_km'] ??
+        json['total_kilometers_traveled'] ??
+        json['total_kilometers'] ??
+        json['odo'] ??
+        json['kilometer'] ??
+        json['distance'] ??
+        '0';
+
     return Vehicle(
       id: json['id'] ?? 0,
       plateNumber: json['vehicle_number'] ?? json['name'] ?? '',
@@ -134,6 +147,7 @@ class Vehicle {
       isIgnitionOn: ignition,
       isLocked: json['lock'] != 0,
       deviceId: (json['imei'] ?? json['device_id'] ?? '').toString(),
+      odometer: rawOdo?.toString() ?? '0',
     );
   }
 

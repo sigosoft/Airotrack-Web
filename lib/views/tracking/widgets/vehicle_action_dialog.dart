@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import '../../../controllers/home_controller.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../models/tracking_model.dart';
-import '../vehicle_detail_map_view.dart';
+import '../vehicle_detail_map_view.dart' hide VehicleDetailController;
 
 class VehicleActionDialog extends StatelessWidget {
   final TrackingCardData data;
@@ -30,9 +30,7 @@ class VehicleActionDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
         width: 420,

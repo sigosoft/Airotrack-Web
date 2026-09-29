@@ -18,7 +18,12 @@ class VehicleInfoSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final odometerDigitsList = data.odometerDigits.split('');
+    final rawDigits = data.odometerDigits.replaceAll(RegExp(r'[^0-9]'), '');
+    final cleanDigits = rawDigits.isNotEmpty ? rawDigits : '0000000';
+    final odometerDigitsList = (cleanDigits.length < 7
+            ? cleanDigits.padLeft(7, '0')
+            : cleanDigits)
+        .split('');
     final isMobile = CustomMediaQuery.isMobile(context);
 
     return Container(
