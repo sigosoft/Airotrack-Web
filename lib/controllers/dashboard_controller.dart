@@ -149,7 +149,7 @@ class DashboardController extends GetxController {
     );
   }
 
-  void _updateDashboardData() {
+  void _updateDashboardData({bool forceIndexSelection = false}) {
     final total =
         int.tryParse(homeController.totalCount.value) ??
         homeController.vehicles.length;
@@ -236,9 +236,22 @@ class DashboardController extends GetxController {
       final idx = selectedVehicleIndex.value < homeController.vehicles.length
           ? selectedVehicleIndex.value
           : 0;
-      final selectedVeh = homeController.vehicles[idx];
+      var selectedVeh = homeController.vehicles[idx];
       if (Get.isRegistered<VehicleDetailController>()) {
-        Get.find<VehicleDetailController>().updateFromVehicle(selectedVeh);
+        final detailCtrl = Get.find<VehicleDetailController>();
+        // FIX: a periodic refresh must keep the vehicle that is already open
+        // on the detail page (matched by IMEI) instead of replacing it with
+        // the vehicle at selectedVehicleIndex. Only an explicit selectVehicle()
+        // on the dashboard switches the detail page to the indexed vehicle.
+        if (!forceIndexSelection && detailCtrl.activeImei.isNotEmpty) {
+          for (final v in homeController.vehicles) {
+            if (v.deviceId == detailCtrl.activeImei) {
+              selectedVeh = v;
+              break;
+            }
+          }
+        }
+        detailCtrl.updateFromVehicle(selectedVeh);
       }
     }
   }
@@ -352,7 +365,7 @@ class DashboardController extends GetxController {
 
   void selectVehicle(int index) {
     selectedVehicleIndex.value = index;
-    _updateDashboardData();
+    _updateDashboardData(forceIndexSelection: true);
     fetchDashboardApi();
   }
 

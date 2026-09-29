@@ -150,28 +150,35 @@ class LoginView extends StatelessWidget {
                                 controller.togglePasswordVisibility,
                           ),
                         ),
-                        const SizedBox(height: 12),
-
-                        // --- Forgot Password Link ---
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: InkWell(
-                            onTap: controller.onForgotPassword,
-                            borderRadius: BorderRadius.circular(4),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                vertical: 4.0,
-                                horizontal: 2.0,
-                              ),
-                              child: Text(
-                                AppStrings.forgotPassword,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
+                        // --- Forgot Password Link (Hidden) ---
+                        Visibility(
+                          visible: false,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: InkWell(
+                                  onTap: controller.onForgotPassword,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: 4.0,
+                                      horizontal: 2.0,
+                                    ),
+                                    child: Text(
+                                      AppStrings.forgotPassword,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -213,33 +220,38 @@ class LoginView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 20),
 
-                        // --- Sign Up Footer Link ---
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text(
-                              AppStrings.dontHaveAccount,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            InkWell(
-                              onTap: controller.onSignUp,
-                              borderRadius: BorderRadius.circular(4),
-                              child: const Text(
-                                AppStrings.signUp,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.textLink,
-                                  fontWeight: FontWeight.w700,
+                        // --- Sign Up Footer Link (Hidden) ---
+                        Visibility(
+                          visible: false,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 20.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  AppStrings.dontHaveAccount,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w400,
+                                  ),
                                 ),
-                              ),
+                                InkWell(
+                                  onTap: controller.onSignUp,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: const Text(
+                                    AppStrings.signUp,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppColors.textLink,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ],
                     ),

@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../config/api_config.dart';
 import '../../../constants/app_assets.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import 'map_bottom_action_cards.dart';
@@ -107,8 +108,8 @@ class TrackingMapContainer extends StatelessWidget {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: ApiConfig.googleMapTileUrl,
+                    subdomains: ApiConfig.googleMapSubdomains,
                     userAgentPackageName: 'com.airotrack.app',
                   ),
                   // Live Vehicle Marker

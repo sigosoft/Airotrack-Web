@@ -5,8 +5,11 @@ class ApiConfig {
   static String imageUrl =
       "https://ourworks.co.in/saimpex-backend/public/storage/";
 
-  static const String mapboxAccessToken =
-      'pk.eyJ1Ijoic2FpbXBleGRldmxvcG1lbnQiLCJhIjoiY21rZXg1ZDA4MGFjZDNqcXptZmN6eXJwYyJ9.MhqmUUhQgPHXj-0nwnz9ww';
+  static const String googleMapKey = 'AIzaSyAUlzhkvYVB3FFJH3Cwx7DojTBCgViBMAw';
+
+  static const String googleMapTileUrl =
+      'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+  static const List<String> googleMapSubdomains = ['0', '1', '2', '3'];
 }
 
 class ApiEndPoints {

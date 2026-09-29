@@ -117,6 +117,11 @@ class VehicleDetailController extends GetxController {
 
   final RxBool isLoading = false.obs;
   final RxBool isStatisticsLoading = false.obs;
+
+  // True while a history load the user asked for (date change, opening the
+  // History tab) is in progress. Play is blocked and the map shows a loader.
+  final RxBool isHistoryLoading = false.obs;
+  int _historyRequestSeq = 0;
   final historyPoints = <Map<String, dynamic>>[].obs;
   final liveTrackData = <String, dynamic>{}.obs;
 
@@ -160,12 +165,8 @@ class VehicleDetailController extends GetxController {
       return historyTrips.first['duration'] ?? '00:00:00';
     }
     if (historyPoints.length >= 2) {
-      final sDt = _parseTimestamp(
-        historyPoints.first['device_time'] ?? historyPoints.first['created_at'],
-      );
-      final eDt = _parseTimestamp(
-        historyPoints.last['device_time'] ?? historyPoints.last['created_at'],
-      );
+      final sDt = _parseTimestamp(_pointTime(historyPoints.first));
+      final eDt = _parseTimestamp(_pointTime(historyPoints.last));
       if (sDt != null && eDt != null) {
         return _formatDuration(eDt.difference(sDt));
       }
@@ -210,11 +211,7 @@ class VehicleDetailController extends GetxController {
     if (historyPoints.isNotEmpty) {
       final idx = _movingSegmentIndex.clamp(0, historyPoints.length - 1);
       final pt = historyPoints[idx];
-      final val =
-          pt['device_time'] ??
-          pt['created_at'] ??
-          pt['timestamp'] ??
-          pt['time'];
+      final val = _pointTime(pt);
       if (val != null && val.toString().trim().isNotEmpty) {
         return formatDisplayTime(val.toString());
       }
@@ -238,6 +235,16 @@ class VehicleDetailController extends GetxController {
         : 'N/A';
   }
 
+  /// Duration for the live-tracking popup: how long the vehicle has been in
+  /// its current status (calculated from today's route data).
+  String get liveDialogDuration {
+    if (currentStatusDuration.value.isNotEmpty) {
+      return currentStatusDuration.value;
+    }
+    final d = vehicleDetail.value;
+    return _isFallbackValue(d.runningDuration) ? '-' : d.runningDuration;
+  }
+
   String get historyDialogDuration {
     return historyDisplayDuration;
   }
@@ -256,13 +263,62 @@ class VehicleDetailController extends GetxController {
         : 'Fetching location...';
   }
 
+  // Time keys a history point may use ('devicetime' is what the live
+  // WebSocket sends, so history points most likely use it too).
+  static const List<String> _pointTimeKeys = [
+    'device_time',
+    'devicetime',
+    'deviceTime',
+    'fix_time',
+    'fixtime',
+    'gps_time',
+    'datetime',
+    'date_time',
+    'created_at',
+    'timestamp',
+    'time',
+    'server_time',
+    'servertime',
+    'recorded_at',
+  ];
+  bool _warnedNoPointTime = false;
+
+  /// The time of one history point, whichever key the API uses.
+  dynamic _pointTime(Map<dynamic, dynamic> pt) {
+    for (final k in _pointTimeKeys) {
+      final v = pt[k];
+      if (v != null) {
+        final str = v.toString().trim();
+        if (str.isNotEmpty && str != 'null' && str != '-') return v;
+      }
+    }
+    if (!_warnedNoPointTime) {
+      _warnedNoPointTime = true;
+      debugPrint(
+        '[History] No time field found on history point. Keys: ${pt.keys.toList()}',
+      );
+    }
+    return null;
+  }
+
   DateTime? _parseTimestamp(dynamic timeVal) {
     if (timeVal == null) return null;
     final str = timeVal.toString().trim();
     if (str.isEmpty || str == '-' || str == 'N/A') return null;
 
+    // Epoch seconds / milliseconds
+    if (RegExp(r'^\d{9,13}$').hasMatch(str)) {
+      final n = int.tryParse(str);
+      if (n != null) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          str.length >= 12 ? n : n * 1000,
+        );
+      }
+    }
+
     final iso = DateTime.tryParse(str);
-    if (iso != null) return iso;
+    // UTC times ('...Z') are shown in local time, like the rest of the app.
+    if (iso != null) return iso.isUtc ? iso.toLocal() : iso;
 
     try {
       final parts = str.split(' ');
@@ -375,36 +431,289 @@ class VehicleDetailController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    ever(vehicleDetail, (_) => _applyTodayStats());
     _startLiveAnimationLoop();
     _bindToHomeController();
     placeMovingMarkerAtStart();
+  }
+
+  // ---------------------------------------------------------------------
+  // Today's statistics from the route data (track_vehicle, today 12 AM - now)
+  // Used when the live snapshot / Home list do not send these values.
+  // ---------------------------------------------------------------------
+  final RxString currentStatus = ''.obs; // running / idle / stopped / inactive
+  final RxString currentStatusDuration = ''.obs; // time in the current status
+  Map<String, String> _todayStats = {};
+  String? _todayStatsImei;
+  DateTime? _todayStatsFetchedAt;
+  bool _todayStatsInFlight = false;
+  static const int _todayStatsRefreshSeconds = 60;
+  static const double _statMovingKmh = 3.0;
+  static const int _statGapSeconds = 900; // no data this long = inactive
+
+  bool _isFallbackValue(String v) {
+    final t = v.trim();
+    return t.isEmpty ||
+        t == '-' ||
+        t == 'N/A' ||
+        t == 'null' ||
+        t == '0' ||
+        t == '00:00:00';
+  }
+
+  String _hms(int seconds) {
+    if (seconds < 0) seconds = 0;
+    final h = (seconds ~/ 3600).toString().padLeft(2, '0');
+    final m = ((seconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  bool? _pointIgnition(Map<String, dynamic> p) {
+    final attrs = p['attributes'];
+    final dynamic v =
+        p['ignition'] ??
+        p['ign'] ??
+        p['acc'] ??
+        p['engine'] ??
+        (attrs is Map ? attrs['ignition'] : null);
+    if (v == null) return null;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    final s = v.toString().trim().toLowerCase();
+    if (['1', 'true', 'on', 'yes'].contains(s)) return true;
+    if (['0', 'false', 'off', 'no'].contains(s)) return false;
+    return null;
+  }
+
+  List<Map<String, dynamic>> _extractHistoryPoints(dynamic body) {
+    final resData = body is Map ? (body['data'] ?? body) : body;
+    List<dynamic> raw = [];
+    if (resData is List) {
+      raw = resData;
+    } else if (resData is Map) {
+      for (final k in [
+        'location_history',
+        'history',
+        'locations',
+        'track',
+        'track_vehicle',
+        'points',
+        'route',
+        'items',
+        'data',
+        'list',
+      ]) {
+        if (resData[k] is List) {
+          raw = resData[k];
+          break;
+        }
+      }
+    }
+    return raw
+        .whereType<Map>()
+        .map((j) => Map<String, dynamic>.from(j))
+        .toList();
+  }
+
+  /// Running / idle / stopped / inactive time, avg & max speed and the
+  /// current status duration, all calculated from today's route points.
+  Map<String, String> _computeTodayStats(
+    List<Map<String, dynamic>> pts,
+    DateTime now,
+  ) {
+    final rows = <(DateTime, double, bool?)>[];
+    for (final p in pts) {
+      final t = _parseTimestamp(_pointTime(p));
+      if (t == null) continue;
+      final spd = double.tryParse(p['speed']?.toString() ?? '') ?? 0.0;
+      rows.add((t, spd, _pointIgnition(p)));
+    }
+    if (rows.isEmpty) return {};
+    rows.sort((a, b) => a.$1.compareTo(b.$1));
+
+    String stateOf((DateTime, double, bool?) r) => r.$2 >= _statMovingKmh
+        ? 'running'
+        : (r.$3 == true ? 'idle' : 'stopped');
+
+    final totals = <String, int>{
+      'running': 0,
+      'idle': 0,
+      'stopped': 0,
+      'inactive': 0,
+    };
+    double maxSpeed = 0, sumMoving = 0;
+    int nMoving = 0;
+
+    for (int i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      if (r.$2 > maxSpeed) maxSpeed = r.$2;
+      if (r.$2 >= _statMovingKmh) {
+        sumMoving += r.$2;
+        nMoving++;
+      }
+      final nextT = i < rows.length - 1 ? rows[i + 1].$1 : now;
+      final dt = nextT.difference(r.$1).inSeconds;
+      if (dt <= 0) continue;
+      if (dt > _statGapSeconds) {
+        totals['inactive'] = totals['inactive']! + dt;
+      } else {
+        final st = stateOf(r);
+        totals[st] = totals[st]! + dt;
+      }
+    }
+
+    // Current status and how long the vehicle has been in it.
+    final last = rows.last;
+    final sinceLast = now.difference(last.$1).inSeconds;
+    String cur;
+    DateTime since;
+    if (sinceLast > _statGapSeconds) {
+      cur = 'inactive';
+      since = last.$1;
+    } else {
+      cur = stateOf(last);
+      int j = rows.length - 1;
+      while (j > 0 &&
+          stateOf(rows[j - 1]) == cur &&
+          rows[j].$1.difference(rows[j - 1].$1).inSeconds <= _statGapSeconds) {
+        j--;
+      }
+      since = rows[j].$1;
+    }
+
+    return {
+      'running': _hms(totals['running']!),
+      'idle': _hms(totals['idle']!),
+      'stopped': _hms(totals['stopped']!),
+      'inactive': _hms(totals['inactive']!),
+      'avg': nMoving > 0 ? (sumMoving / nMoving).toStringAsFixed(0) : '0',
+      'max': maxSpeed.toStringAsFixed(0),
+      'status': cur,
+      'statusDuration': _hms(now.difference(since).inSeconds),
+    };
+  }
+
+  /// Fetches today's route (at most once a minute) and fills the daily
+  /// statistics. Uses the existing track_vehicle endpoint.
+  Future<void> _refreshTodayStats() async {
+    final imei = activeImei;
+    if (imei.isEmpty || _todayStatsInFlight || selectedTopTab.value != -1) {
+      return;
+    }
+    final fresh =
+        _todayStatsImei == imei &&
+        _todayStatsFetchedAt != null &&
+        DateTime.now().difference(_todayStatsFetchedAt!).inSeconds <
+            _todayStatsRefreshSeconds;
+    if (fresh) {
+      _applyTodayStats();
+      return;
+    }
+    _todayStatsInFlight = true;
+    try {
+      final now = DateTime.now();
+      final response = await DioClient().get(
+        ApiEndPoints.vehicleHistory,
+        queryParameters: {
+          'imei': imei,
+          'from_date': _formatInitialDate(now, isStart: true),
+          'to_date': _formatInitialDate(now, isStart: false),
+          'page': '1',
+        },
+      );
+      if (_liveDisposed || imei != activeImei) return;
+      final pts = _extractHistoryPoints(response.data);
+      _todayStats = _computeTodayStats(pts, now);
+      _todayStatsImei = imei;
+      _todayStatsFetchedAt = now;
+      _applyTodayStats();
+    } catch (e) {
+      debugPrint('[TodayStats] Error: $e');
+    } finally {
+      _todayStatsInFlight = false;
+    }
+  }
+
+  /// Replaces placeholder values (00:00:00, '-', N/A) with today's
+  /// calculated values. Real values from the API are never overwritten.
+  void _applyTodayStats() {
+    if (_todayStats.isEmpty || _todayStatsImei != activeImei) return;
+    currentStatus.value = _todayStats['status'] ?? '';
+    currentStatusDuration.value = _todayStats['statusDuration'] ?? '';
+
+    final d = vehicleDetail.value;
+    String pick(String current, String key) =>
+        _isFallbackValue(current) ? (_todayStats[key] ?? current) : current;
+
+    final running = pick(d.runningDuration, 'running');
+    final idle = pick(d.idleDuration, 'idle');
+    final stopped = pick(d.stoppedDuration, 'stopped');
+    final inactive = pick(d.inactiveDuration, 'inactive');
+    final avg = pick(d.avgSpeedKmph, 'avg');
+    final max = pick(d.maxSpeedKmph, 'max');
+
+    if (running == d.runningDuration &&
+        idle == d.idleDuration &&
+        stopped == d.stoppedDuration &&
+        inactive == d.inactiveDuration &&
+        avg == d.avgSpeedKmph &&
+        max == d.maxSpeedKmph) {
+      return; // nothing to change (also stops the ever() loop)
+    }
+
+    vehicleDetail.value = VehicleDetailData(
+      vehicleNumber: d.vehicleNumber,
+      odometerDigits: d.odometerDigits,
+      timestamp: d.timestamp,
+      distanceKm: d.distanceKm,
+      speedKmph: d.speedKmph,
+      coordinates: d.coordinates,
+      latitude: d.latitude,
+      longitude: d.longitude,
+      address: d.address,
+      deviceTime: d.deviceTime,
+      serverTime: d.serverTime,
+      runningDuration: running,
+      idleDuration: idle,
+      stoppedDuration: stopped,
+      inactiveDuration: inactive,
+      avgSpeedKmph: avg,
+      maxSpeedKmph: max,
+      todayOdoKm: d.todayOdoKm,
+      sensors: d.sensors,
+    );
+  }
+
+  /// Picks the vehicle this screen is showing from a Home list refresh.
+  /// FIX: once a vehicle is open, a Home refresh must never change it, even
+  /// if the list order changes or selectedVehicleIndex is reset elsewhere.
+  /// The dashboard index is only used for the very first vehicle.
+  Vehicle _resolveHomeVehicle(List<Vehicle> list) {
+    if (activeImei.isNotEmpty) {
+      for (final v in list) {
+        if (v.deviceId == activeImei) return v;
+      }
+    }
+    final dashCtrl = Get.isRegistered<DashboardController>()
+        ? Get.find<DashboardController>()
+        : null;
+    final idx =
+        (dashCtrl != null && dashCtrl.selectedVehicleIndex.value < list.length)
+        ? dashCtrl.selectedVehicleIndex.value
+        : 0;
+    return list[idx];
   }
 
   void _bindToHomeController() {
     if (Get.isRegistered<HomeController>()) {
       final homeCtrl = Get.find<HomeController>();
       if (homeCtrl.vehicles.isNotEmpty) {
-        final dashCtrl = Get.isRegistered<DashboardController>()
-            ? Get.find<DashboardController>()
-            : null;
-        final idx =
-            (dashCtrl != null &&
-                dashCtrl.selectedVehicleIndex.value < homeCtrl.vehicles.length)
-            ? dashCtrl.selectedVehicleIndex.value
-            : 0;
-        updateFromVehicle(homeCtrl.vehicles[idx]);
+        updateFromVehicle(_resolveHomeVehicle(homeCtrl.vehicles));
       }
       ever(homeCtrl.vehicles, (List<Vehicle> list) {
         if (list.isNotEmpty) {
-          final dashCtrl = Get.isRegistered<DashboardController>()
-              ? Get.find<DashboardController>()
-              : null;
-          final idx =
-              (dashCtrl != null &&
-                  dashCtrl.selectedVehicleIndex.value < list.length)
-              ? dashCtrl.selectedVehicleIndex.value
-              : 0;
-          updateFromVehicle(list[idx]);
+          updateFromVehicle(_resolveHomeVehicle(list));
         }
       });
     }
@@ -437,6 +746,7 @@ class VehicleDetailController extends GetxController {
     Map<String, dynamic>? rawMap,
     Vehicle? vehicle,
     bool isStale = false,
+    bool keepPrevious = true,
   }) {
     final ignition =
         pos?.ignition ??
@@ -528,7 +838,7 @@ class VehicleDetailController extends GetxController {
               ? 'GPS Fix'
               : (ignition == 1 ? 'Stationary' : 'Parked'));
 
-    return [
+    final built = [
       SensorReadingItem(
         label: 'Battery',
         value: batteryVal,
@@ -562,12 +872,46 @@ class VehicleDetailController extends GetxController {
         iconType: 'movement2',
       ),
     ];
+
+    // FIX: an update that does not carry a sensor (e.g. the Home list has no
+    // satellites / accuracy) must not blank the tile to '-'. Keep the last
+    // known value for the same vehicle until a new value arrives.
+    if (!keepPrevious) return built;
+    final previous = <String, String>{
+      for (final s in vehicleDetail.value.sensors) s.iconType: s.value,
+    };
+    return [
+      for (final s in built)
+        (s.value == '-' &&
+                previous[s.iconType] != null &&
+                previous[s.iconType] != '-')
+            ? SensorReadingItem(
+                label: s.label,
+                value: previous[s.iconType]!,
+                iconType: s.iconType,
+              )
+            : s,
+    ];
   }
 
   /// Update vehicle details from a selected [Vehicle] model
   void updateFromVehicle(Vehicle v) {
+    if (activeImei.isNotEmpty && activeImei != v.deviceId) {
+      final caller = StackTrace.current
+          .toString()
+          .split('\n')
+          .take(6)
+          .join('\n');
+      debugPrint(
+        '[VehicleDetail] Vehicle switched $activeImei -> ${v.deviceId} (${v.plateNumber}). Called from:\n$caller',
+      );
+    }
+    final bool sameVehicle = activeImei == v.deviceId;
     activeImei = v.deviceId;
-    final speed = double.tryParse(v.speed) ?? 0.0;
+    // FIX: Home list data can be old (e.g. last packet 35 min ago). An old
+    // position must not show its old speed / "Moving" as if live.
+    final bool isStale = _isStaleFix(v.lastUpdated);
+    final speed = isStale ? 0.0 : (double.tryParse(v.speed) ?? 0.0);
     final lat = v.latitude;
     final lng = v.longitude;
     final coordStr = (lat != null && lng != null)
@@ -577,7 +921,25 @@ class VehicleDetailController extends GetxController {
     final initialSensors = _buildDynamicSensors(
       vehicle: v,
       rawMap: {'speed': v.speed, 'ignition': v.isIgnitionOn ? 1 : 0},
+      isStale: isStale,
+      keepPrevious: sameVehicle,
     );
+
+    // FIX: the Home list usually has no status duration. Writing '00:00:00'
+    // on every refresh wiped the real durations from the live snapshot.
+    // Keep the values already shown for this vehicle; the Home duration (if
+    // any) only belongs to the vehicle's CURRENT status.
+    final prev = vehicleDetail.value;
+    final rawDur = v.statusDuration.trim();
+    final hasDur =
+        rawDur.isNotEmpty &&
+        rawDur.toUpperCase() != 'N/A' &&
+        rawDur.toLowerCase() != 'null';
+    final curStatus = v.status.trim().toLowerCase();
+    String durFor(String status, String previous) {
+      if (hasDur && curStatus == status) return rawDur;
+      return sameVehicle ? previous : '00:00:00';
+    }
 
     final initialOdo = _extractOdometerDigits(
       v.odometer,
@@ -598,38 +960,42 @@ class VehicleDetailController extends GetxController {
       address: v.locationLabel,
       deviceTime: v.lastUpdated,
       serverTime: v.lastUpdated,
-      runningDuration: v.statusDuration.isNotEmpty
-          ? v.statusDuration
-          : '00:00:00',
-      idleDuration: v.statusDuration.isNotEmpty ? v.statusDuration : '00:00:00',
-      stoppedDuration: v.statusDuration.isNotEmpty
-          ? v.statusDuration
-          : '00:00:00',
-      inactiveDuration: v.statusDuration.isNotEmpty
-          ? v.statusDuration
-          : '00:00:00',
-      avgSpeedKmph: v.speed,
-      maxSpeedKmph: v.speed,
+      runningDuration: durFor('running', prev.runningDuration),
+      idleDuration: durFor('idle', prev.idleDuration),
+      stoppedDuration: durFor('stopped', prev.stoppedDuration),
+      inactiveDuration: durFor('inactive', prev.inactiveDuration),
+      // Avg / Max are daily figures, not the current speed. Keep what the
+      // live snapshot or today's route calculation already provided.
+      avgSpeedKmph: sameVehicle ? prev.avgSpeedKmph : '-',
+      maxSpeedKmph: sameVehicle ? prev.maxSpeedKmph : '-',
       todayOdoKm: v.todayKm,
       sensors: initialSensors,
     );
 
     // FIX: when the same vehicle is already being live-tracked, a Home list
-    // refresh must NOT snap the marker back to Home's (often older) position
-    // or tear down the WebSocket. That was causing the jump-back / freeze.
+    // refresh must NOT snap the marker or restart the socket. Its position is
+    // fed into the glide engine like any other fix (older fixes are ignored),
+    // so the car keeps moving smoothly even if the snapshot has no position.
     final bool isSameLiveSession =
         selectedTopTab.value == -1 &&
         _liveTrackingImei != null &&
-        _liveTrackingImei == v.deviceId &&
-        _liveWaypoints.isNotEmpty;
+        _liveTrackingImei == v.deviceId;
 
-    if (!isSameLiveSession &&
-        lat != null &&
-        lng != null &&
-        (lat != 0.0 || lng != 0.0)) {
-      final loc = LatLng(lat, lng);
+    final bool hasHomeFix =
+        lat != null && lng != null && (lat != 0.0 || lng != 0.0);
+
+    if (isSameLiveSession && hasHomeFix) {
+      _onLiveDevicePosition(
+        LatLng(lat!, lng!),
+        speed,
+        status: isStale ? 'stale' : v.status,
+        deviceTime: v.lastUpdated,
+      );
+    } else if (!isSameLiveSession && hasHomeFix) {
+      final loc = LatLng(lat!, lng!);
       _snapLiveMarkerTo(loc, speed);
-      isLiveMoving.value = speed > 0 || v.status.toLowerCase() == 'running';
+      isLiveMoving.value =
+          !isStale && (speed > 0 || v.status.toLowerCase() == 'running');
     }
 
     if (v.deviceId.isNotEmpty) {
@@ -637,6 +1003,7 @@ class VehicleDetailController extends GetxController {
         // Same API call as before; for an active session it only refreshes
         // the snapshot instead of resetting the whole live engine.
         startLiveTracking(v.deviceId, reconnectOnly: isSameLiveSession);
+        _refreshTodayStats();
       } else {
         loadVehicleSnapshot(v.deviceId);
       }
@@ -860,7 +1227,12 @@ class VehicleDetailController extends GetxController {
     String? imei,
     String? fromDate,
     String? toDate,
+    bool userInitiated = false,
   }) async {
+    // A background refresh (Home list) must not interrupt a load the user is
+    // waiting for; that load already fetches the same date range.
+    if (!userInitiated && isHistoryLoading.value) return;
+
     String targetImei = (imei != null && imei.isNotEmpty) ? imei : activeImei;
     if (targetImei.isEmpty) {
       if (Get.isRegistered<HomeController>()) {
@@ -884,6 +1256,20 @@ class VehicleDetailController extends GetxController {
     final fDate = fromDate ?? startDateStr.value;
     final tDate = toDate ?? endDateStr.value;
 
+    final int requestId = ++_historyRequestSeq;
+    if (userInitiated) {
+      // New date range: stop the car and remove the old route right away so
+      // the previous day's line is never shown or played meanwhile.
+      stopMovingMarker();
+      isHistoryLoading.value = true;
+      historyPoints.clear();
+      historyTrips.clear();
+      traveledRoutePoints.clear();
+      _playbackRoutePoints = [];
+      movingMarkerPosition.value = null;
+      playbackProgress.value = 0.0;
+    }
+
     try {
       isLoading.value = true;
       final response = await DioClient().get(
@@ -895,6 +1281,9 @@ class VehicleDetailController extends GetxController {
           'page': '1',
         },
       );
+
+      // A newer request was started meanwhile: ignore this older result.
+      if (requestId != _historyRequestSeq) return;
 
       if (response.data != null) {
         final resData = response.data['data'] ?? response.data;
@@ -950,6 +1339,9 @@ class VehicleDetailController extends GetxController {
       debugPrint('Error loading vehicle history: $e');
     } finally {
       isLoading.value = false;
+      if (requestId == _historyRequestSeq) {
+        isHistoryLoading.value = false;
+      }
     }
   }
 
@@ -1010,84 +1402,107 @@ class VehicleDetailController extends GetxController {
     }
   }
 
+  // Trip detection thresholds.
+  static const double _tripMovingSpeedKmh = 3.0; // reported speed = moving
+  static const double _tripMovingJumpMeters =
+      100.0; // or position moved this far
+  static const int _tripStopSeconds = 300; // stationary this long ends a trip
+  static const int _tripGapSeconds = 900; // no data this long ends a trip
+  static const double _tripMinKm = 0.1; // ignore trips shorter than this
+
+  LatLng? _pointLatLng(Map<String, dynamic> pt) {
+    final la = double.tryParse(
+      pt['latitude']?.toString() ?? pt['lat']?.toString() ?? '',
+    );
+    final ln = double.tryParse(
+      pt['longitude']?.toString() ?? pt['lng']?.toString() ?? '',
+    );
+    if (la == null || ln == null || (la == 0 && ln == 0)) return null;
+    return LatLng(la, ln);
+  }
+
+  /// Builds trips from the history points. A trip is a stretch where the
+  /// vehicle is actually moving; parked periods (e.g. overnight pings every
+  /// 5 minutes at 0 km/h) are gaps between trips, not trips themselves.
   List<Map<String, dynamic>> _generateTripsFromPoints() {
-    if (historyPoints.isEmpty) return [];
+    if (historyPoints.length < 2) return [];
 
-    if (historyPoints.length == 1) {
-      final pt = historyPoints.first;
-      final timeStr =
-          pt['device_time']?.toString() ??
-          pt['created_at']?.toString() ??
-          pt['timestamp']?.toString() ??
-          pt['time']?.toString() ??
-          '-';
-      final speedVal = double.tryParse(pt['speed']?.toString() ?? '') ?? 0.0;
-      return [
-        {
-          'badge': 'Trip',
-          'distance': '0.00 Km',
-          'maxSpeed': '${speedVal.toStringAsFixed(1)} Kmph',
-          'startTime': formatDisplayTime(timeStr),
-          'duration': '00h 00m',
-          'endTime': formatDisplayTime(timeStr),
-        },
-      ];
-    }
+    final trips = <Map<String, dynamic>>[];
+    var current = <Map<String, dynamic>>[];
+    int lastMovingIdx = -1; // index in [current] of the last moving point
+    DateTime? lastMoveTime;
+    Map<String, dynamic>? prev;
 
-    // Segment points into trips by detecting stops (> 5 mins stationary or > 15 mins timestamp gap)
-    List<Map<String, dynamic>> trips = [];
-    List<Map<String, dynamic>> currentTripPoints = [];
-
-    for (int i = 0; i < historyPoints.length; i++) {
-      final pt = historyPoints[i];
-      if (currentTripPoints.isEmpty) {
-        currentTripPoints.add(pt);
-        continue;
-      }
-
-      final prevPt = currentTripPoints.last;
-      final prevTime = _parseTimestamp(
-        prevPt['device_time'] ??
-            prevPt['created_at'] ??
-            prevPt['timestamp'] ??
-            prevPt['time'],
-      );
-      final currTime = _parseTimestamp(
-        pt['device_time'] ?? pt['created_at'] ?? pt['timestamp'] ?? pt['time'],
-      );
-
-      final speed = double.tryParse(pt['speed']?.toString() ?? '') ?? 0.0;
-      final prevSpeed =
-          double.tryParse(prevPt['speed']?.toString() ?? '') ?? 0.0;
-
-      bool isNewTrip = false;
-      if (prevTime != null && currTime != null) {
-        final gapSec = currTime.difference(prevTime).inSeconds.abs();
-        if ((gapSec >= 300 && speed == 0 && prevSpeed == 0) || gapSec >= 900) {
-          isNewTrip = true;
+    void finishTrip() {
+      if (current.length >= 2 && lastMovingIdx >= 0) {
+        // Keep the trip up to the first stationary point after the last
+        // movement (that is where the vehicle stopped).
+        final endIdx = math.min(lastMovingIdx + 1, current.length - 1);
+        final pts = current.sublist(0, endIdx + 1);
+        final summary = _buildTripSummaryMap(pts, tripIndex: trips.length + 1);
+        final km =
+            double.tryParse(
+              summary['distance']?.toString().split(' ').first ?? '',
+            ) ??
+            0.0;
+        final maxSpd =
+            double.tryParse(
+              summary['maxSpeed']?.toString().split(' ').first ?? '',
+            ) ??
+            0.0;
+        if (km >= _tripMinKm || maxSpd >= _tripMovingSpeedKmh) {
+          summary['badge'] = 'Trip ${trips.length + 1}';
+          trips.add(summary);
         }
       }
+      current = <Map<String, dynamic>>[];
+      lastMovingIdx = -1;
+      lastMoveTime = null;
+    }
 
-      if (isNewTrip && currentTripPoints.length >= 2) {
-        trips.add(
-          _buildTripSummaryMap(currentTripPoints, tripIndex: trips.length + 1),
-        );
-        currentTripPoints = [pt];
-      } else {
-        currentTripPoints.add(pt);
+    for (final pt in historyPoints) {
+      final t = _parseTimestamp(_pointTime(pt));
+      final speed = double.tryParse(pt['speed']?.toString() ?? '') ?? 0.0;
+      final here = _pointLatLng(pt);
+      final before = prev == null ? null : _pointLatLng(prev);
+      final movedM = (here != null && before != null)
+          ? _distanceMeters(before, here)
+          : 0.0;
+      final prevT = prev == null ? null : _parseTimestamp(_pointTime(prev));
+
+      // Long data gap inside a trip ends it.
+      if (current.isNotEmpty &&
+          t != null &&
+          prevT != null &&
+          t.difference(prevT).inSeconds.abs() >= _tripGapSeconds) {
+        finishTrip();
       }
-    }
 
-    if (currentTripPoints.isNotEmpty) {
-      trips.add(
-        _buildTripSummaryMap(currentTripPoints, tripIndex: trips.length + 1),
-      );
+      final isMoving =
+          speed >= _tripMovingSpeedKmh || movedM >= _tripMovingJumpMeters;
+
+      if (isMoving) {
+        if (current.isEmpty && prev != null) {
+          current.add(prev); // trip starts where the vehicle was standing
+        }
+        current.add(pt);
+        lastMovingIdx = current.length - 1;
+        lastMoveTime = t ?? lastMoveTime;
+      } else if (current.isNotEmpty) {
+        current.add(pt);
+        if (t != null &&
+            lastMoveTime != null &&
+            t.difference(lastMoveTime!).inSeconds >= _tripStopSeconds) {
+          finishTrip();
+        }
+      }
+      prev = pt;
     }
+    finishTrip();
 
     if (trips.length == 1) {
       trips[0]['badge'] = 'Trip';
     }
-
     return trips;
   }
 
@@ -1100,18 +1515,8 @@ class VehicleDetailController extends GetxController {
     final first = pts.first;
     final last = pts.last;
 
-    final rawStart =
-        first['device_time'] ??
-        first['created_at'] ??
-        first['timestamp'] ??
-        first['time'] ??
-        '-';
-    final rawEnd =
-        last['device_time'] ??
-        last['created_at'] ??
-        last['timestamp'] ??
-        last['time'] ??
-        '-';
+    final rawStart = _pointTime(first) ?? '-';
+    final rawEnd = _pointTime(last) ?? '-';
 
     final startDt = _parseTimestamp(rawStart);
     final endDt = _parseTimestamp(rawEnd);
@@ -1355,7 +1760,7 @@ class VehicleDetailController extends GetxController {
     // Trigger API calls when tab changes
     if (index == 0) {
       // History Tab
-      loadVehicleHistory();
+      loadVehicleHistory(userInitiated: true);
     } else if (index == 1) {
       // Alerts Tab
       if (Get.isRegistered<AlertsController>()) {
@@ -1371,6 +1776,7 @@ class VehicleDetailController extends GetxController {
     } else if (index == -1) {
       if (activeImei.isNotEmpty) {
         startLiveTracking(activeImei);
+        _refreshTodayStats();
       }
     }
   }
@@ -1524,6 +1930,11 @@ class VehicleDetailController extends GetxController {
   }
 
   void startMovingMarker() {
+    // Do not play until the selected date range has fully loaded.
+    if (isHistoryLoading.value) {
+      AppToast.show('Loading history, please wait...');
+      return;
+    }
     final points = getActiveRoutePoints();
     if (points.length < 2) {
       AppToast.showErrorMessage('No history route available for playback');
@@ -1925,6 +2336,7 @@ class VehicleDetailController extends GetxController {
       _wsConfig = data.websocketConfig;
       _wsInfo = data.websocket;
 
+      bool fed = false;
       final pos = data.currentPosition;
       final todayStats = data.todayStatistics;
       if (pos != null) {
@@ -2003,6 +2415,7 @@ class VehicleDetailController extends GetxController {
         if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
           final location = LatLng(lat, lng);
           _lastLiveUpdateReceivedAt = DateTime.now();
+          fed = true;
 
           if (reconnectOnly && _liveWaypoints.isNotEmpty) {
             _onLiveDevicePosition(
@@ -2023,6 +2436,9 @@ class VehicleDetailController extends GetxController {
           }
         }
       }
+
+      // FIX: model gave no usable position -> read it from the raw response.
+      if (!fed) _feedRawSnapshotPosition(body);
 
       if (!reconnectOnly) {
         _startLiveAnimationLoop();
@@ -2082,6 +2498,7 @@ class VehicleDetailController extends GetxController {
       final data = snapshot.data;
       if (data == null) return;
 
+      bool fed = false;
       final pos = data.currentPosition;
       final todayStats = data.todayStatistics;
       if (pos != null) {
@@ -2146,6 +2563,7 @@ class VehicleDetailController extends GetxController {
         if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
           final location = LatLng(lat, lng);
           _lastLiveUpdateReceivedAt = DateTime.now();
+          fed = true;
           _onLiveDevicePosition(
             location,
             speed,
@@ -2154,9 +2572,75 @@ class VehicleDetailController extends GetxController {
           );
         }
       }
+
+      // FIX: model gave no usable position -> read it from the raw response.
+      if (!fed) _feedRawSnapshotPosition(body);
     } catch (e) {
       debugPrint('[LiveTrack] Fallback polling error: $e');
     }
+  }
+
+  /// Reads a position straight from a raw live_track_snapshot body when
+  /// [LiveTrackSnapshotModel] did not parse one, and feeds it to the engine.
+  void _feedRawSnapshotPosition(Map<String, dynamic> body) {
+    final root = body['data'] is Map
+        ? Map<String, dynamic>.from(body['data'])
+        : body;
+
+    double? toD(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v');
+
+    Map<String, dynamic>? src;
+    double? lat;
+    double? lng;
+    for (final key in [
+      'current_position',
+      'position',
+      'vehicle_info',
+      'vehicle',
+      'last_position',
+      'location',
+      null,
+    ]) {
+      final cand = key == null ? root : root[key];
+      if (cand is! Map) continue;
+      final m = Map<String, dynamic>.from(cand);
+      final la = toD(m['latitude'] ?? m['lat'] ?? m['Latitude']);
+      final ln = toD(m['longitude'] ?? m['lng'] ?? m['lon'] ?? m['Longitude']);
+      if (la != null && ln != null && (la != 0.0 || ln != 0.0)) {
+        src = m;
+        lat = la;
+        lng = ln;
+        break;
+      }
+    }
+
+    if (src == null || lat == null || lng == null) {
+      debugPrint(
+        '[LiveTrack] Snapshot has no usable position. data keys: ${root.keys.toList()}',
+      );
+      return;
+    }
+
+    final devTime =
+        (src['device_time'] ??
+                src['devicetime'] ??
+                src['last_update'] ??
+                src['server_time'])
+            ?.toString();
+    final stale = _isStaleFix(devTime);
+    final speed = stale ? 0.0 : (toD(src['speed'] ?? src['Speed']) ?? 0.0);
+    final course = toD(
+      src['course'] ?? src['angle'] ?? src['heading'] ?? src['bearing'],
+    );
+
+    _lastLiveUpdateReceivedAt = DateTime.now();
+    _onLiveDevicePosition(
+      LatLng(lat, lng),
+      speed,
+      status: stale ? 'stale' : src['status']?.toString(),
+      courseDeg: course,
+      deviceTime: devTime,
+    );
   }
 
   Future<void> _connectLiveWebSocket(String imei) async {

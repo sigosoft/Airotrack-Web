@@ -30,13 +30,13 @@ class DioClient {
           if (_token != null && _token!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $_token';
           }
-          return handler.next(options);
+          handler.next(options);
         },
         onResponse: (response, handler) {
-          return handler.next(response);
+          handler.next(response);
         },
         onError: (DioException e, handler) {
-          return handler.next(e);
+          handler.next(e);
         },
       ),
     );

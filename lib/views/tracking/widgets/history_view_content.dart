@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../config/api_config.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/custom_media_query.dart';
 
@@ -19,8 +20,9 @@ class HistoryViewContent extends StatelessWidget {
 
     // Auto-fetch history if not loaded yet
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (controller.historyPoints.isEmpty) {
-        controller.loadVehicleHistory();
+      if (controller.historyPoints.isEmpty &&
+          !controller.isHistoryLoading.value) {
+        controller.loadVehicleHistory(userInitiated: true);
       }
     });
 
@@ -62,7 +64,8 @@ class HistoryViewContent extends StatelessWidget {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: ApiConfig.googleMapTileUrl,
+                  subdomains: ApiConfig.googleMapSubdomains,
                   userAgentPackageName: 'com.airotrack.app',
                 ),
                 // Dynamic Route Polylines
@@ -72,7 +75,7 @@ class HistoryViewContent extends StatelessWidget {
                       // Full planned journey guide line
                       Polyline(
                         points: activeRoute,
-                        color: const Color(0xFFD0D5DD),
+                        color: const Color(0xFF4FC3F7), // sky blue
                         strokeWidth: 3.5,
                       ),
                       // Traveled path dynamically drawn behind vehicle as it moves
@@ -101,7 +104,11 @@ class HistoryViewContent extends StatelessWidget {
                                 fit: BoxFit.contain,
                               )
                             : Transform.rotate(
-                                angle: (((controller.movingMarkerBearing.value ?? 90.0) - 90.0) * (math.pi / 180.0)),
+                                angle:
+                                    (((controller.movingMarkerBearing.value ??
+                                            90.0) -
+                                        90.0) *
+                                    (math.pi / 180.0)),
                                 child: Image.asset(
                                   AppAssets.greenCar,
                                   fit: BoxFit.contain,
@@ -209,6 +216,18 @@ class HistoryViewContent extends StatelessWidget {
                 ),
               ),
 
+            // Loading overlay while the selected date range is being fetched
+            if (controller.isHistoryLoading.value)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.white.withOpacity(0.6),
+                  alignment: Alignment.center,
+                  child: const CircularProgressIndicator(
+                    color: Color(0xFF0288D1),
+                  ),
+                ),
+              ),
+
             // Right Floating Action Map Toolbar
             Positioned(
               top: 16,
@@ -308,7 +327,9 @@ class HistoryViewContent extends StatelessWidget {
                   children: [
                     // Play / Pause circular button
                     InkWell(
-                      onTap: controller.togglePlay,
+                      onTap: controller.isHistoryLoading.value
+                          ? null
+                          : controller.togglePlay,
                       child: Container(
                         width: 26,
                         height: 26,
@@ -319,13 +340,21 @@ class HistoryViewContent extends StatelessWidget {
                             width: 1.5,
                           ),
                         ),
-                        child: Icon(
-                          controller.isPlaying.value
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 16,
-                          color: const Color(0xFF0288D1),
-                        ),
+                        child: controller.isHistoryLoading.value
+                            ? const Padding(
+                                padding: EdgeInsets.all(5),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                  color: Color(0xFF0288D1),
+                                ),
+                              )
+                            : Icon(
+                                controller.isPlaying.value
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 16,
+                                color: const Color(0xFF0288D1),
+                              ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -434,10 +463,12 @@ class HistoryViewContent extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFEAECF0)),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Text(
-                      'No trip history recorded for selected date',
-                      style: TextStyle(
+                      controller.isHistoryLoading.value
+                          ? 'Loading history...'
+                          : 'No trip history recorded for selected date',
+                      style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF667085),
                         fontWeight: FontWeight.w500,
@@ -761,7 +792,7 @@ class HistoryViewContent extends StatelessWidget {
           } else {
             controller.endDateStr.value = '$day-$month-$year 11:59 PM';
           }
-          controller.loadVehicleHistory();
+          controller.loadVehicleHistory(userInitiated: true);
         }
       },
       borderRadius: BorderRadius.circular(6),
