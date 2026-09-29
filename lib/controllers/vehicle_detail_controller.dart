@@ -2176,23 +2176,37 @@ class VehicleDetailController extends GetxController {
       currentPlaybackSpeedKmph.value = 0.0;
     }
 
-    // Actively draw the route behind the moving vehicle!
+    // Draw the route behind the moving vehicle. Only the moving tip changes
+    // per frame; the whole list is rebuilt only when a new segment starts
+    // (rebuilding thousands of points every frame made playback stutter).
     if (_movingSegmentIndex < route.length) {
-      final passed = route.sublist(0, _movingSegmentIndex + 1);
-      traveledRoutePoints.assignAll([...passed, interpolated]);
+      final wantLen = _movingSegmentIndex + 2; // passed points + moving tip
+      final t = traveledRoutePoints;
+      if (t.length == wantLen && t.length >= 2) {
+        t[t.length - 1] = interpolated;
+      } else {
+        t.assignAll([
+          ...route.sublist(0, _movingSegmentIndex + 1),
+          interpolated,
+        ]);
+      }
     }
 
-    // Keep camera following vehicle smoothly every ~300ms
-    _lastCameraUpdateMs += 16;
-    if (_lastCameraUpdateMs >= 300) {
-      _lastCameraUpdateMs = 0;
-      try {
-        historyMapController.move(
-          interpolated,
-          historyMapController.camera.zoom,
-        );
-      } catch (_) {}
-    }
+    // Camera glides with the vehicle every frame (it used to jump every
+    // 300 ms, which made the map move in steps).
+    try {
+      final cam = historyMapController.camera;
+      final c = cam.center;
+      final a = 1.0 - math.exp(-dt / 0.35); // smoothing, frame-rate independent
+      final next = LatLng(
+        c.latitude + (interpolated.latitude - c.latitude) * a,
+        c.longitude + (interpolated.longitude - c.longitude) * a,
+      );
+      // If the car is far off-screen (e.g. after a seek), jump straight to it.
+      final far =
+          _distanceMeters(c, interpolated) > _playbackBaseMps(route) * 20;
+      historyMapController.move(far ? interpolated : next, cam.zoom);
+    } catch (_) {}
   }
 
   /// 1x playback speed in m/s, derived from the map's current zoom so the
