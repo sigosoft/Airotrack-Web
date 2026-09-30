@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
 import '../../../constants/app_colors.dart';
+import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/custom_media_query.dart';
 import '../../reminder/add_reminder_view.dart';
 import 'select_geofence_dialog.dart';
@@ -87,6 +88,10 @@ class MapBottomActionCards extends StatelessWidget {
                       context: context,
                       builder: (context) => const SelectGeofenceDialog(),
                     );
+                  } else if (title == 'Street View') {
+                    // Google Street View at the vehicle's current position,
+                    // facing the direction the vehicle is heading.
+                    Get.find<VehicleDetailController>().openStreetView();
                   } else if (title == 'Update Odometer') {
                     showDialog(
                       context: context,

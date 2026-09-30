@@ -3,7 +3,7 @@ import '../config/api_config.dart';
 class Vehicle {
   final int id;
   final String plateNumber;
-  final String status; // 'Running', 'Stopped', 'Idle', 'Inactive'
+  final String status; // 'Running', 'Stopped', 'Idle', 'Expired'
   final String statusDuration;
   final String lastUpdated;
   /// Place name from API `location` (home endpoint).
@@ -213,14 +213,14 @@ class Vehicle {
   }) {
     if (apiStatus != null && apiStatus.isNotEmpty) {
       final s = apiStatus.toLowerCase();
-      if (s.contains('inactive') || s.contains('expired')) return 'Inactive';
+      if (s.contains('inactive') || s.contains('expired')) return 'Expired';
       if (s.contains('run') || s.contains('mov')) return 'Running';
       if (s.contains('idle')) return 'Idle';
       if (s.contains('stop')) return 'Stopped';
     }
 
     final m = mode?.toUpperCase();
-    if (m == 'INACTIVE' || m == 'EXPIRED') return 'Inactive';
+    if (m == 'INACTIVE' || m == 'EXPIRED') return 'Expired';
     // Mode is authoritative — do not override Stopped with noisy speed.
     if (m == 'M' || m == 'R' || m == 'RUNNING' || m == 'MOVING') {
       return 'Running';

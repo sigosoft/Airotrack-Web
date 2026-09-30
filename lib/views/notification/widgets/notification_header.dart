@@ -6,8 +6,20 @@ import '../../../utils/custom_media_query.dart';
 class NotificationHeader extends StatelessWidget {
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onFilterTap;
+  final String? startDate;
+  final String? endDate;
+  final VoidCallback? onStartDateTap;
+  final VoidCallback? onEndDateTap;
 
-  const NotificationHeader({super.key, this.onSearchChanged, this.onFilterTap});
+  const NotificationHeader({
+    super.key,
+    this.onSearchChanged,
+    this.onFilterTap,
+    this.startDate,
+    this.endDate,
+    this.onStartDateTap,
+    this.onEndDateTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -216,9 +228,19 @@ class NotificationHeader extends StatelessWidget {
             // Right: Date Pickers & Filter Button
             Row(
               children: [
-                _buildDatePickerPill(_formatCurrentDate()),
+                _buildDatePickerPill(
+                  startDate?.isNotEmpty == true
+                      ? startDate!
+                      : _formatCurrentDate(),
+                  onTap: onStartDateTap,
+                ),
                 const SizedBox(width: 10),
-                _buildDatePickerPill(_formatCurrentDate()),
+                _buildDatePickerPill(
+                  endDate?.isNotEmpty == true
+                      ? endDate!
+                      : _formatCurrentDate(),
+                  onTap: onEndDateTap,
+                ),
                 const SizedBox(width: 10),
                 // Filter Button
                 InkWell(
@@ -250,31 +272,35 @@ class NotificationHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildDatePickerPill(String dateText) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.calendar_today_outlined,
-            size: 16,
-            color: Color(0xFF344054),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            dateText,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+  Widget _buildDatePickerPill(String dateText, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.calendar_today_outlined,
+              size: 16,
               color: Color(0xFF344054),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Text(
+              dateText,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF344054),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

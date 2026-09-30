@@ -15,6 +15,7 @@ class ApiConfig {
 class ApiEndPoints {
   static String login = "login";
   static String home = "home";
+  static String alerts = "alerts";
   static String alertsReport = "reports/alerts";
   static String profile = "profile";
   static String updateProfile = "update_profile";

@@ -123,7 +123,7 @@ class AlertsController extends GetxController {
       if (reqToDate.isNotEmpty) queryParams['to_date'] = reqToDate;
 
       final response = await DioClient().get(
-        ApiEndPoints.alertsReport,
+        ApiEndPoints.alerts,
         queryParameters: queryParams,
         options: Options(
           headers: {"Accept": "application/json"},
@@ -133,16 +133,16 @@ class AlertsController extends GetxController {
 
       if (response.data != null) {
         final resData =
-            response.data['data'] ?? response.data['reports'] ?? response.data;
+            response.data['alerts'] ?? response.data['data'] ?? response.data['reports'] ?? response.data;
         List rawList = [];
 
         if (resData is List) {
           rawList = resData;
         } else if (resData is Map) {
-          if (resData['items'] is List) {
-            rawList = resData['items'];
-          } else if (resData['alerts'] is List) {
+          if (resData['alerts'] is List) {
             rawList = resData['alerts'];
+          } else if (resData['items'] is List) {
+            rawList = resData['items'];
           } else if (resData['reports'] is List) {
             rawList = resData['reports'];
           } else if (resData['data'] is List) {
@@ -215,7 +215,7 @@ class AlertsController extends GetxController {
       if (reqToDate.isNotEmpty) queryParams['to_date'] = reqToDate;
 
       final response = await DioClient().get(
-        ApiEndPoints.alertsReport,
+        ApiEndPoints.alerts,
         queryParameters: queryParams,
         options: Options(
           headers: {"Accept": "application/json"},
@@ -225,16 +225,16 @@ class AlertsController extends GetxController {
 
       if (response.data != null) {
         final resData =
-            response.data['data'] ?? response.data['reports'] ?? response.data;
+            response.data['alerts'] ?? response.data['data'] ?? response.data['reports'] ?? response.data;
         List rawList = [];
 
         if (resData is List) {
           rawList = resData;
         } else if (resData is Map) {
-          if (resData['items'] is List) {
-            rawList = resData['items'];
-          } else if (resData['alerts'] is List) {
+          if (resData['alerts'] is List) {
             rawList = resData['alerts'];
+          } else if (resData['items'] is List) {
+            rawList = resData['items'];
           } else if (resData['reports'] is List) {
             rawList = resData['reports'];
           } else if (resData['data'] is List) {

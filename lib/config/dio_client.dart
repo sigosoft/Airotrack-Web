@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,16 +31,73 @@ class DioClient {
           if (_token != null && _token!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $_token';
           }
+
+          if (_shouldLog(options.path)) {
+            final tag = _endpointTag(options.path);
+            debugPrint('==================== [$tag CALL] ====================');
+            debugPrint('${options.method.toUpperCase()} ${options.uri}');
+            if (options.queryParameters.isNotEmpty) {
+              debugPrint('Query Parameters: ${options.queryParameters}');
+            }
+            if (options.data != null) {
+              debugPrint('Request Body: ${options.data}');
+            }
+            debugPrint('====================================================');
+          }
+
           handler.next(options);
         },
         onResponse: (response, handler) {
+          final path = response.requestOptions.path;
+          if (_shouldLog(path)) {
+            final tag = _endpointTag(path);
+            debugPrint(
+              '==================== [$tag RESPONSE] ====================',
+            );
+            debugPrint('URL: ${response.requestOptions.uri}');
+            debugPrint('Status Code: ${response.statusCode}');
+            try {
+              debugPrint(
+                'Response Body:\n${const JsonEncoder.withIndent('  ').convert(response.data)}',
+              );
+            } catch (_) {
+              debugPrint('Response Body: ${response.data}');
+            }
+            debugPrint(
+              '========================================================',
+            );
+          }
           handler.next(response);
         },
         onError: (DioException e, handler) {
+          final path = e.requestOptions.path;
+          if (_shouldLog(path)) {
+            final tag = _endpointTag(path);
+            debugPrint(
+              '==================== [$tag ERROR] ====================',
+            );
+            debugPrint('URL: ${e.requestOptions.uri}');
+            debugPrint('Status Code: ${e.response?.statusCode}');
+            debugPrint('Error: ${e.message}');
+            if (e.response?.data != null) {
+              debugPrint('Error Data: ${e.response?.data}');
+            }
+            debugPrint(
+              '======================================================',
+            );
+          }
           handler.next(e);
         },
       ),
     );
+  }
+
+  static bool _shouldLog(String path) {
+    return false;
+  }
+
+  static String _endpointTag(String path) {
+    return 'API';
   }
 
   Dio get dio => _dio;

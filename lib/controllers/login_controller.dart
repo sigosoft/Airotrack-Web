@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../config/dio_client.dart';
 import '../models/login_model.dart';
+import '../services/fcm_service.dart';
 import '../utils/app_toast.dart';
 import '../views/dashboard/dashboard_view.dart';
 import '../views/forgot_password/forgot_password_view.dart';
@@ -146,12 +147,13 @@ class LoginController extends GetxController {
     isLoading.value = true;
 
     try {
+      final fcmToken = await FcmService.instance.getToken() ?? '';
       final response = await DioClient().post(
         ApiEndPoints.login,
         body: FormData.fromMap({
           'username': phoneController.text.trim(),
           'password': passwordController.text.trim(),
-          'fcm': '',
+          'fcm': fcmToken,
         }),
       );
 

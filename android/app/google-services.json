@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "521325798783",
+    "project_id": "airotrack-b67c4",
+    "storage_bucket": "airotrack-b67c4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:521325798783:android:8319344172fca2f457e64a",
+        "android_client_info": {
+          "package_name": "com.example.airotrack"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2gnFWXfFn_x135H86Hzyt1oNnkd6m9Xc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

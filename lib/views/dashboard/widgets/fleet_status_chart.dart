@@ -1,32 +1,68 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../controllers/home_controller.dart';
+import '../../../controllers/dashboard_controller.dart';
 
 class FleetStatusChart extends StatelessWidget {
   const FleetStatusChart({super.key});
 
+  // Status colours, same as the Airotrack mobile app. The dashboard API
+  // sends counts only; if it ever sends a colour, that colour is used.
+  static const Map<String, int> _defaultColors = {
+    'running': 0xFF34A853, // green
+    'stopped': 0xFFEA4335, // red
+    'idle': 0xFFFBBC05, // yellow
+    'expired': 0xFFF58A2E, // orange
+    'inactive': 0xFF4285F4, // blue
+    'nodata': 0xFF9E9E9E, // grey
+  };
+  static const Map<String, String> _defaultTitles = {
+    'running': 'Running',
+    'stopped': 'Stopped',
+    'idle': 'Idle',
+    'expired': 'Expired',
+    'inactive': 'Inactive',
+    'nodata': 'No Data',
+  };
+  // Same order as the mobile app: legend top-to-bottom and donut clockwise
+  // from the top.
+  static const List<String> _shownKeys = [
+    'running',
+    'stopped',
+    'idle',
+    'expired',
+    'inactive',
+    'nodata',
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final homeController = Get.isRegistered<HomeController>()
-        ? Get.find<HomeController>()
-        : Get.put(HomeController());
+    final dashboard = Get.isRegistered<DashboardController>()
+        ? Get.find<DashboardController>()
+        : Get.put(DashboardController());
 
     return Obx(() {
-      final total = int.tryParse(homeController.totalCount.value) ?? homeController.vehicles.length;
-      final running = int.tryParse(homeController.runningCount.value) ?? homeController.vehicles.where((v) => v.status == 'Running').length;
-      final stopped = int.tryParse(homeController.stoppedCount.value) ?? homeController.vehicles.where((v) => v.status == 'Stopped').length;
-      final idle = int.tryParse(homeController.idleCount.value) ?? homeController.vehicles.where((v) => v.status == 'Idle').length;
-      final inactive = int.tryParse(homeController.inactiveCount.value) ?? homeController.vehicles.where((v) => v.status == 'Inactive').length;
-
-      final legendItems = [
-        {'title': 'Running', 'count': running.toString().padLeft(2, '0'), 'color': const Color(0xFF2E7D32), 'raw': running},
-        {'title': 'Stopped', 'count': stopped.toString().padLeft(2, '0'), 'color': const Color(0xFFD32F2F), 'raw': stopped},
-        {'title': 'Idle', 'count': idle.toString().padLeft(2, '0'), 'color': const Color(0xFFF57C00), 'raw': idle},
-        {'title': 'Expired', 'count': '00', 'color': const Color(0xFFE65100), 'raw': 0},
-        {'title': 'In Active', 'count': inactive.toString().padLeft(2, '0'), 'color': const Color(0xFF0288D1), 'raw': inactive},
-        {'title': 'No Data', 'count': '00', 'color': const Color(0xFF757575), 'raw': 0},
-      ];
+      // Counts from the dashboard API response (fleet_status). All six
+      // statuses are always listed, like the mobile app; a status missing
+      // from the response shows 00.
+      final loaded = dashboard.fleetLoaded.value;
+      final byKey = {
+        for (final f in dashboard.fleetStatus) f['key'] as String: f,
+      };
+      final slices = <_Slice>[];
+      if (loaded) {
+        for (final key in _shownKeys) {
+          final f = byKey[key];
+          slices.add(
+            _Slice(
+              title: _defaultTitles[key]!,
+              count: (f?['count'] as int?) ?? 0,
+              color: Color((f?['color'] as int?) ?? _defaultColors[key]!),
+            ),
+          );
+        }
+      }
+      final total = dashboard.fleetTotal.value;
 
       return Container(
         decoration: BoxDecoration(
@@ -62,33 +98,40 @@ class FleetStatusChart extends StatelessWidget {
                         size: const Size(140, 140),
                         painter: _DonutChartPainter(
                           total: total,
-                          running: running,
-                          stopped: stopped,
-                          idle: idle,
-                          inactive: inactive,
+                          slices: slices,
                         ),
                       ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '$total',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1D2939),
-                            ),
+                      if (!loaded)
+                        const SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Color(0xFF0288D1),
                           ),
-                          const Text(
-                            'Objects',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF667085),
+                        )
+                      else
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$total',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1D2939),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                            Text(
+                              total == 1 ? 'Vehicle' : 'Vehicles',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF667085),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
@@ -97,7 +140,7 @@ class FleetStatusChart extends StatelessWidget {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: legendItems.map((item) {
+                    children: slices.map((item) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Row(
@@ -106,13 +149,13 @@ class FleetStatusChart extends StatelessWidget {
                               width: 10,
                               height: 10,
                               decoration: BoxDecoration(
-                                color: item['color'] as Color,
+                                color: item.color,
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              item['title'] as String,
+                              item.title,
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
@@ -121,7 +164,7 @@ class FleetStatusChart extends StatelessWidget {
                             ),
                             const Spacer(),
                             Text(
-                              item['count'] as String,
+                              item.count.toString().padLeft(2, '0'),
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -143,20 +186,18 @@ class FleetStatusChart extends StatelessWidget {
   }
 }
 
+class _Slice {
+  final String title;
+  final int count;
+  final Color color;
+  const _Slice({required this.title, required this.count, required this.color});
+}
+
 class _DonutChartPainter extends CustomPainter {
   final int total;
-  final int running;
-  final int stopped;
-  final int idle;
-  final int inactive;
+  final List<_Slice> slices;
 
-  _DonutChartPainter({
-    required this.total,
-    required this.running,
-    required this.stopped,
-    required this.idle,
-    required this.inactive,
-  });
+  _DonutChartPainter({required this.total, required this.slices});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -165,32 +206,22 @@ class _DonutChartPainter extends CustomPainter {
     const strokeWidth = 24.0;
 
     final safeTotal = total > 0 ? total : 1;
-
-    final slices = [
-      {'ratio': running / safeTotal, 'color': const Color(0xFF2E7D32)},
-      {'ratio': stopped / safeTotal, 'color': const Color(0xFFD32F2F)},
-      {'ratio': idle / safeTotal, 'color': const Color(0xFFF57C00)},
-      {'ratio': 0.0, 'color': const Color(0xFFE65100)},
-      {'ratio': inactive / safeTotal, 'color': const Color(0xFF0288D1)},
-      {'ratio': 0.0, 'color': const Color(0xFF757575)},
-    ];
-
     double startAngle = -pi / 2;
 
     for (final slice in slices) {
-      final ratio = slice['ratio'] as double;
+      final ratio = slice.count / safeTotal;
       if (ratio <= 0) continue;
 
       final sweepAngle = ratio * 2 * pi;
       final paint = Paint()
-        ..color = slice['color'] as Color
+        ..color = slice.color
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth;
 
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         startAngle,
-        sweepAngle - 0.04,
+        sweepAngle,
         false,
         paint,
       );

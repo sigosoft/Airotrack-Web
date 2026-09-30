@@ -18,11 +18,16 @@ class TrackingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMobile = CustomMediaQuery.isMobile(context);
     final isIdle = data.status.trim().toUpperCase() == 'IDLE';
+    final isExpired =
+        data.status.trim().toUpperCase() == 'EXPIRED' ||
+        data.status.trim().toUpperCase() == 'INACTIVE';
     final statusColor = isIdle
         ? const Color(0xFFF57C00)
-        : (data.isGreenVehicle
-            ? const Color(0xFF00A859)
-            : const Color(0xFFE53935));
+        : (isExpired
+              ? const Color(0xFFE65100)
+              : (data.isGreenVehicle
+                    ? const Color(0xFF00A859)
+                    : const Color(0xFFE53935)));
 
     return Container(
       decoration: BoxDecoration(
@@ -515,11 +520,7 @@ class TrackingCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: isMobile ? 11 : 12,
-            color: const Color(0xFF475467),
-          ),
+          Icon(icon, size: isMobile ? 11 : 12, color: const Color(0xFF475467)),
           SizedBox(width: isMobile ? 3 : 4),
           Text(
             label,

@@ -109,7 +109,9 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _buildFilterIconButton(),
+                            _buildFilterIconButton(
+                              onTap: () => alertsController.loadAlerts(),
+                            ),
                           ],
                         ),
                       ],
@@ -178,7 +180,9 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                           const SizedBox(width: 12),
 
                           // Filter Sliders Icon Button
-                          _buildFilterIconButton(),
+                          _buildFilterIconButton(
+                            onTap: () => alertsController.loadAlerts(),
+                          ),
                         ],
                       ),
                     ),
@@ -311,12 +315,23 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                                   );
                                 }
 
+                                const int pageSize = 10;
+                                final int totalPages =
+                                    (list.length / pageSize).ceil();
+                                final int safePage = _selectedPage.clamp(
+                                  1,
+                                  totalPages > 0 ? totalPages : 1,
+                                );
+                                final int startIndex = (safePage - 1) * pageSize;
+                                final pagedList =
+                                    list.skip(startIndex).take(pageSize).toList();
+
                                 return ListView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: list.length,
+                                  itemCount: pagedList.length,
                                   itemBuilder: (context, index) {
-                                    final item = list[index];
+                                    final item = pagedList[index];
                                     final isIgnitionOn = item.isIgnitionOn;
                                     final statusText = item.type.isNotEmpty
                                         ? item.type
@@ -495,6 +510,7 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
             Obx(() {
               final totalPages = (alertsController.alerts.length / 10).ceil();
               if (totalPages <= 1) return const SizedBox.shrink();
+              final safePage = _selectedPage.clamp(1, totalPages);
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 24),
@@ -509,7 +525,6 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                             setState(() {
                               _selectedPage = i;
                             });
-                            alertsController.loadAlerts();
                           },
                           borderRadius: BorderRadius.circular(14),
                           child: Container(
@@ -517,7 +532,7 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                             height: 28,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: _selectedPage == i
+                              color: safePage == i
                                   ? const Color(0xFF00A3E0)
                                   : Colors.transparent,
                               shape: BoxShape.circle,
@@ -527,7 +542,7 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                               style: TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.bold,
-                                color: _selectedPage == i
+                                color: safePage == i
                                     ? Colors.white
                                     : const Color(0xFF344054),
                               ),
@@ -540,14 +555,13 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
                       const SizedBox(width: 8),
 
                       // NEXT Button
-                      if (_selectedPage < totalPages)
+                      if (safePage < totalPages)
                         InkWell(
                           onTap: () {
-                            if (_selectedPage < totalPages) {
+                            if (safePage < totalPages) {
                               setState(() {
-                                _selectedPage++;
+                                _selectedPage = safePage + 1;
                               });
-                              alertsController.loadMoreAlerts();
                             }
                           },
                           child: const Text(
@@ -646,15 +660,19 @@ class _AlertsViewContentState extends State<AlertsViewContent> {
     );
   }
 
-  Widget _buildFilterIconButton() {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
+  Widget _buildFilterIconButton({VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFD0D5DD), width: 1),
+        ),
+        child: const Icon(Icons.tune_rounded, size: 15, color: Color(0xFF344054)),
       ),
-      child: const Icon(Icons.tune_rounded, size: 15, color: Color(0xFF344054)),
     );
   }
 }

@@ -5,9 +5,9 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../config/api_config.dart';
-import '../../../constants/app_assets.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import 'map_bottom_action_cards.dart';
+import 'top_view_car.dart';
 
 class TrackingMapContainer extends StatelessWidget {
   final int selectedTab;
@@ -109,10 +109,55 @@ class TrackingMapContainer extends StatelessWidget {
                   },
                 ),
                 children: [
-                  TileLayer(
-                    urlTemplate: ApiConfig.googleMapTileUrl,
-                    subdomains: ApiConfig.googleMapSubdomains,
-                    userAgentPackageName: 'com.airotrack.app',
+                  Obx(
+                    () => TileLayer(
+                      key: ValueKey(controller.mapLayer.value),
+                      urlTemplate: controller.tileUrlFor(
+                        ApiConfig.googleMapTileUrl,
+                      ),
+                      subdomains: controller.tileSubdomainsFor(
+                        ApiConfig.googleMapTileUrl,
+                        ApiConfig.googleMapSubdomains,
+                      ),
+                      userAgentPackageName: 'com.airotrack.app',
+                    ),
+                  ),
+                  // Today's travelled route (route button)
+                  Obx(
+                    () =>
+                        controller.showLiveRoute.value &&
+                            controller.liveTodayRoute.length >= 2
+                        ? PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: controller.liveTodayRoute.toList(),
+                                color: const Color(0xFF4FC3F7),
+                                strokeWidth: 3.5,
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  // Parking stops (P button)
+                  Obx(
+                    () => controller.showLiveStops.value
+                        ? MarkerLayer(
+                            markers: [
+                              for (final stop in controller.liveStops)
+                                Marker(
+                                  point: stop['point'] as LatLng,
+                                  width: 24,
+                                  height: 24,
+                                  child: GestureDetector(
+                                    onTap: () => controller.onLiveStopTap(stop),
+                                    child: const _ParkingBadge(
+                                      color: Color(0xFFE53935),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
                   ),
                   // Live Vehicle Marker
                   Obx(() {
@@ -142,11 +187,8 @@ class TrackingMapContainer extends StatelessWidget {
                           child: GestureDetector(
                             onTap: controller.toggleMapDialog,
                             child: Transform.rotate(
-                              angle: controller.liveMarkerRotationRad,
-                              child: Image.asset(
-                                AppAssets.greenCar,
-                                fit: BoxFit.contain,
-                              ),
+                              angle: controller.liveTopViewRotationRad,
+                              child: const Center(child: TopViewCar()),
                             ),
                           ),
                         ),
@@ -164,13 +206,24 @@ class TrackingMapContainer extends StatelessWidget {
 
                 final detail = controller.vehicleDetail.value;
 
+                // Keep the dialog fully visible and its close button reachable.
+                // On mobile with the sheet open, the sheet can be dragged up
+                // over the map, so the dialog sits at the TOP of the map.
+                final panelOpen = controller.isBottomPanelVisible.value;
+                final mobileTop = isMobile && panelOpen;
+                final double? dialogBottom = mobileTop
+                    ? null
+                    : (panelOpen ? 200.0 : 70.0);
+
                 return Positioned(
-                  left: 180,
-                  bottom: 120,
+                  left: isMobile ? 12 : 180,
+                  right: isMobile ? 12 : null,
+                  top: mobileTop ? 8 : null,
+                  bottom: dialogBottom,
                   child: Material(
                     color: Colors.transparent,
                     child: Container(
-                      width: 310,
+                      width: isMobile ? null : 310,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -261,34 +314,52 @@ class TrackingMapContainer extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      const _SeperateMapIconButton(icon: Icons.map_outlined),
-                      const _SeperateMapIconButton(
+                      _SeperateMapIconButton(
+                        icon: Icons.map_outlined,
+                        onTap: controller.cycleMapLayer,
+                      ),
+                      _SeperateMapIconButton(
                         icon: Icons.lock_open_rounded,
-                        color: Color(0xFF00A859),
+                        color: const Color(0xFF00A859),
+                        onTap: controller.toggleLiveLock,
                       ),
-                      const _SeperateMapIconButton(
+                      _SeperateMapIconButton(
                         text: 'P',
-                        color: Color(0xFFE53935),
+                        color: const Color(0xFFE53935),
+                        onTap: controller.toggleLiveStops,
                       ),
-                      const _SeperateMapIconButton(
-                        icon: Icons.videocam_outlined,
+                      // Hidden until a dashcam / video API is available.
+                      const Visibility(
+                        visible: false,
+                        child: _SeperateMapIconButton(
+                          icon: Icons.videocam_outlined,
+                        ),
                       ),
-                      const _SeperateMapIconButton(
+                      _SeperateMapIconButton(
                         icon: Icons.alt_route_rounded,
-                        color: Color(0xFF00A859),
+                        color: const Color(0xFF00A859),
+                        onTap: controller.toggleLiveRoute,
                       ),
                       _SeperateMapIconButton(
                         icon: Icons.my_location_rounded,
                         onTap: controller.recenterLiveMap,
                       ),
-                      const _SeperateMapIconButton(
-                        icon: Icons.person_outline_rounded,
+                      // Hidden until driver details / device location exist.
+                      const Visibility(
+                        visible: false,
+                        child: _SeperateMapIconButton(
+                          icon: Icons.person_outline_rounded,
+                        ),
                       ),
-                      const _SeperateMapIconButton(
-                        icon: Icons.person_pin_circle_outlined,
+                      const Visibility(
+                        visible: false,
+                        child: _SeperateMapIconButton(
+                          icon: Icons.person_pin_circle_outlined,
+                        ),
                       ),
-                      const _SeperateMapIconButton(
+                      _SeperateMapIconButton(
                         icon: Icons.explore_outlined,
+                        onTap: controller.resetLiveNorth,
                       ),
                       const SizedBox(height: 4),
                       _SeperateMapIconButton(
@@ -304,13 +375,39 @@ class TrackingMapContainer extends StatelessWidget {
                 ),
               ),
 
-              // Bottom Quick Action Cards Row (Overlay over Map)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 16,
-                child: const MapBottomActionCards(),
-              ),
+              // Bottom Quick Action Cards Row (Overlay over Map) with a close
+              // button; when closed, a "Show options" button brings it back.
+              Obx(() {
+                if (controller.isBottomPanelVisible.value) {
+                  return Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 16,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (!isMobile)
+                          _PanelToggleButton(
+                            icon: Icons.keyboard_arrow_down_rounded,
+                            tooltip: 'Hide options',
+                            onTap: controller.hideBottomPanel,
+                          ),
+                        if (!isMobile) const SizedBox(height: 6),
+                        const MapBottomActionCards(),
+                      ],
+                    ),
+                  );
+                }
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 16,
+                  child: Center(
+                    child: _ShowOptionsPill(onTap: controller.showBottomPanel),
+                  ),
+                );
+              }),
             ],
           ),
         ),
@@ -375,6 +472,116 @@ class TrackingMapContainer extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Small round button used to hide the bottom panel.
+class _PanelToggleButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _PanelToggleButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFEAECF0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 20, color: const Color(0xFF344054)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating pill shown when the bottom panel is closed.
+class _ShowOptionsPill extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ShowOptionsPill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      shadowColor: const Color(0x33000000),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.keyboard_arrow_up_rounded,
+                size: 18,
+                color: Color(0xFF0288D1),
+              ),
+              SizedBox(width: 4),
+              Text(
+                'Show options',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0288D1),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small square "P" marker for a parking stop.
+class _ParkingBadge extends StatelessWidget {
+  final Color color;
+  const _ParkingBadge({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4), // square P box
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 3)],
+      ),
+      child: const Text(
+        'P',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 }

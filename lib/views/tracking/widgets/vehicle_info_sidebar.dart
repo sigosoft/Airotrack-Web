@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -5,6 +7,13 @@ import '../../../constants/app_assets.dart';
 import '../../../models/vehicle_detail_model.dart';
 import '../../../utils/custom_media_query.dart';
 import 'send_command_dialog.dart';
+
+/// Speedometer picture without the needle. It sits in the same folder as
+/// Speeds.png, so the path is taken from AppAssets.speedsGauge.
+final String _speedDialAsset = AppAssets.speedsGauge.replaceFirst(
+  RegExp(r'[^/]+$'),
+  'speeds_dial.png',
+);
 
 class VehicleInfoSidebar extends StatelessWidget {
   final VehicleDetailData data;
@@ -20,10 +29,9 @@ class VehicleInfoSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final rawDigits = data.odometerDigits.replaceAll(RegExp(r'[^0-9]'), '');
     final cleanDigits = rawDigits.isNotEmpty ? rawDigits : '0000000';
-    final odometerDigitsList = (cleanDigits.length < 7
-            ? cleanDigits.padLeft(7, '0')
-            : cleanDigits)
-        .split('');
+    final odometerDigitsList =
+        (cleanDigits.length < 7 ? cleanDigits.padLeft(7, '0') : cleanDigits)
+            .split('');
     final isMobile = CustomMediaQuery.isMobile(context);
 
     return Container(
@@ -146,8 +154,10 @@ class VehicleInfoSidebar extends StatelessWidget {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
+                        // Same gauge picture without the painted needle; the
+                        // needle is drawn by _SpeedNeedlePainter below.
                         Image.asset(
-                          AppAssets.speedsGauge,
+                          _speedDialAsset,
                           width: 85,
                           height: 75,
                           fit: BoxFit.contain,
@@ -180,6 +190,16 @@ class VehicleInfoSidebar extends StatelessWidget {
                                 ),
                               ],
                             ),
+                          ),
+                        ),
+                        // Needle drawn last so the speed label never hides it.
+                        TweenAnimationBuilder<double>(
+                          tween: Tween<double>(end: data.speedKmph.toDouble()),
+                          duration: const Duration(milliseconds: 700),
+                          curve: Curves.easeOutCubic,
+                          builder: (_, speed, __) => CustomPaint(
+                            size: const Size(85, 75),
+                            painter: _SpeedNeedlePainter(speed),
                           ),
                         ),
                       ],
@@ -384,17 +404,17 @@ class VehicleInfoSidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 _buildStatusDurationPill(
-                  'Stopped',
+                  'Stop',
                   data.stoppedDuration,
                   const Color(0xFFD32F2F),
                   const Color(0xFFFFEBEE),
                 ),
                 const SizedBox(width: 4),
                 _buildStatusDurationPill(
-                  'Inactive',
+                  'Expired',
                   data.inactiveDuration,
-                  const Color(0xFF0288D1),
-                  const Color(0xFFE1F5FE),
+                  const Color(0xFFE65100),
+                  const Color(0xFFFBE9E7),
                 ),
               ],
             ),
@@ -559,6 +579,14 @@ class VehicleInfoSidebar extends StatelessWidget {
     switch (type) {
       case 'battery':
         return AppAssets.battery;
+      case 'gsm': // GSM signal
+        return AppAssets.wifi;
+      case 'network':
+        return AppAssets.wifi;
+      case 'ignition':
+        return AppAssets.ignition;
+      case 'altitude':
+        return AppAssets.altitude;
       case 'car_battery':
         return AppAssets.carBattery;
       case 'satellite':
@@ -608,4 +636,51 @@ class _ImageAssetPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Draws the speedometer needle on top of speeds_dial.png.
+/// Dial scale (measured from the picture): 0 km/h at the lower left,
+/// 80 km/h straight up, 160 km/h at the lower right = 1.5 degrees per km/h.
+class _SpeedNeedlePainter extends CustomPainter {
+  final double speed;
+  const _SpeedNeedlePainter(this.speed);
+
+  // Picture size and needle pivot in picture pixels.
+  static const double _imgW = 522, _imgH = 512;
+  static const double _pivotX = 259, _pivotY = 291;
+  static const double _needleLen = 222, _tailLen = 38, _hubR = 23;
+  static const double _maxSpeed = 160;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Same placement as Image.asset(fit: BoxFit.contain).
+    final s = math.min(size.width / _imgW, size.height / _imgH);
+    final ox = (size.width - _imgW * s) / 2;
+    final oy = (size.height - _imgH * s) / 2;
+    final pivot = Offset(ox + _pivotX * s, oy + _pivotY * s);
+
+    final v = speed.clamp(0.0, _maxSpeed);
+    // Angle from straight up, clockwise: 0 km/h = -120 deg, 160 = +120 deg.
+    final a = (v - 80) * 1.5 * math.pi / 180;
+    final dir = Offset(math.sin(a), -math.cos(a));
+
+    final tip = pivot + dir * (_needleLen * s);
+    final tail = pivot - dir * (_tailLen * s);
+    canvas.drawLine(
+      tail,
+      tip,
+      Paint()
+        ..color = const Color(0xFFDC3440)
+        ..strokeWidth = math.max(1.4, 7 * s)
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawCircle(
+      pivot,
+      _hubR * s,
+      Paint()..color = const Color(0xFFDB2D2D),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SpeedNeedlePainter old) => old.speed != speed;
 }

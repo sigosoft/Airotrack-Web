@@ -11,6 +11,29 @@ import 'widgets/notification_header.dart';
 class NotificationView extends StatelessWidget {
   const NotificationView({super.key});
 
+  Future<void> _pickDate(
+    BuildContext context,
+    NotificationController controller,
+    bool isStart,
+  ) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      final formatted =
+          "${picked.day.toString().padLeft(2, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.year}";
+      if (isStart) {
+        controller.startDateStr.value = formatted;
+      } else {
+        controller.endDateStr.value = formatted;
+      }
+      controller.loadNotifications();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final NotificationController controller =
@@ -48,8 +71,19 @@ class NotificationView extends StatelessWidget {
       body: Column(
         children: [
           // 1. Notification Top Header Bar
-          NotificationHeader(
-            onSearchChanged: controller.updateSearch,
+          Obx(
+            () => NotificationHeader(
+              onSearchChanged: controller.updateSearch,
+              startDate: controller.startDateStr.value.isNotEmpty
+                  ? controller.startDateStr.value
+                  : null,
+              endDate: controller.endDateStr.value.isNotEmpty
+                  ? controller.endDateStr.value
+                  : null,
+              onStartDateTap: () => _pickDate(context, controller, true),
+              onEndDateTap: () => _pickDate(context, controller, false),
+              onFilterTap: () => controller.loadNotifications(),
+            ),
           ),
 
           // 2. Main Content Area (Sidebar + Notification List)
@@ -111,12 +145,19 @@ class NotificationView extends StatelessWidget {
                               controller.notificationData.value.notifications;
 
                           if (notifications.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 40),
+                            String emptyMessage = 'No alerts found';
+                            if (controller.selectedTab.value == 1) {
+                              emptyMessage = 'No announcements found';
+                            } else if (controller.selectedTab.value == 2) {
+                              emptyMessage = 'No reminders found';
+                            }
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 40),
                               child: Center(
                                 child: Text(
-                                  'No notifications found',
-                                  style: TextStyle(
+                                  emptyMessage,
+                                  style: const TextStyle(
                                     fontSize: 14,
                                     color: Color(0xFF667085),
                                     fontWeight: FontWeight.w500,
@@ -126,8 +167,19 @@ class NotificationView extends StatelessWidget {
                             );
                           }
 
+                          // 10 items per page pagination
+                          const pageSize = 10;
+                          final totalPages = (notifications.length / pageSize).ceil();
+                          final safePage = controller.currentPage.value
+                              .clamp(1, totalPages > 0 ? totalPages : 1);
+                          final startIndex = (safePage - 1) * pageSize;
+                          final pagedNotifications = notifications
+                              .skip(startIndex)
+                              .take(pageSize)
+                              .toList();
+
                           return Column(
-                            children: notifications.map((item) {
+                            children: pagedNotifications.map((item) {
                               return NotificationCard(data: item);
                             }).toList(),
                           );
@@ -144,12 +196,15 @@ class NotificationView extends StatelessWidget {
                             return const SizedBox.shrink();
                           }
 
+                          final safePage = controller.currentPage.value
+                              .clamp(1, totalPages);
+
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               ...List.generate(totalPages, (index) {
                                 final pageNum = index + 1;
-                                final isActive = controller.currentPage.value == pageNum;
+                                final isActive = safePage == pageNum;
 
                                 return InkWell(
                                   onTap: () => controller.selectPage(pageNum),
@@ -160,26 +215,32 @@ class NotificationView extends StatelessWidget {
                                     margin: const EdgeInsets.symmetric(horizontal: 4),
                                     alignment: Alignment.center,
                                     decoration: BoxDecoration(
-                                      color: isActive ? const Color(0xFF00A3E0) : Colors.transparent,
+                                      color: isActive
+                                          ? const Color(0xFF00A3E0)
+                                          : Colors.transparent,
                                       shape: BoxShape.circle,
                                     ),
                                     child: Text(
                                       '$pageNum',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-                                        color: isActive ? Colors.white : const Color(0xFF344054),
+                                        fontWeight: isActive
+                                            ? FontWeight.bold
+                                            : FontWeight.w600,
+                                        color: isActive
+                                            ? Colors.white
+                                            : const Color(0xFF344054),
                                       ),
                                     ),
                                   ),
                                 );
                               }),
                               const SizedBox(width: 12),
-                              if (controller.currentPage.value < totalPages)
+                              if (safePage < totalPages)
                                 InkWell(
                                   onTap: () {
-                                    if (controller.currentPage.value < totalPages) {
-                                      controller.selectPage(controller.currentPage.value + 1);
+                                    if (safePage < totalPages) {
+                                      controller.selectPage(safePage + 1);
                                     }
                                   },
                                   child: const Text(

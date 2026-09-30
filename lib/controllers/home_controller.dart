@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,14 +21,15 @@ class HomeController extends GetxController {
   // Status counts
   final totalCount = "0".obs;
   final runningCount = "0".obs;
-  final stoppedCount = "0".obs;
   final idleCount = "0".obs;
+  final stoppedCount = "0".obs;
+  final expiredCount = "0".obs;
   final inactiveCount = "0".obs;
 
   /// Search query for filtering vehicles (plate number, address, device id).
   final searchQuery = ''.obs;
 
-  /// API type → status: 1 Stopped, 2 Running, 3 Idle, 4 Inactive.
+  /// API type → status: 1 Stopped, 2 Running, 3 Idle, 4 Expired.
   String? get _selectedStatusFilter {
     switch (selectedType.value) {
       case 1:
@@ -37,7 +39,7 @@ class HomeController extends GetxController {
       case 3:
         return 'Idle';
       case 4:
-        return 'Inactive';
+        return 'Expired';
       default:
         return null;
     }
@@ -49,7 +51,17 @@ class HomeController extends GetxController {
     var list = vehicles.toList();
     final status = _selectedStatusFilter;
     if (status != null) {
-      list = list.where((v) => v.status == status).toList();
+      if (status == 'Expired') {
+        list = list
+            .where((v) => v.status == 'Expired' || v.status == 'Inactive')
+            .toList();
+      } else if (status == 'Stopped') {
+        list = list
+            .where((v) => v.status == 'Stopped' || v.status == 'Stop')
+            .toList();
+      } else {
+        list = list.where((v) => v.status == status).toList();
+      }
     }
 
     final q = searchQuery.value.trim().toLowerCase();
@@ -139,32 +151,40 @@ class HomeController extends GetxController {
           final stats = data['statistics'];
           totalCount.value = stats['total_vehicles']?.toString() ?? "0";
           runningCount.value = stats['running_vehicles']?.toString() ?? "0";
-          stoppedCount.value = stats['stopped_vehicles']?.toString() ?? "0";
           idleCount.value = stats['idle_vehicles']?.toString() ?? "0";
-          inactiveCount.value = stats['expired_vehicles']?.toString() ?? "0";
+          stoppedCount.value = stats['stopped_vehicles']?.toString() ?? "0";
+          final exp = (stats['expired_vehicles'] ?? stats['inactive_vehicles'])
+                  ?.toString() ??
+              "0";
+          expiredCount.value = exp;
+          inactiveCount.value = exp;
         } else {
           totalCount.value = vehicles.length.toString();
           runningCount.value = vehicles
               .where((v) => v.status == 'Running')
               .length
               .toString();
-          stoppedCount.value = vehicles
-              .where((v) => v.status == 'Stopped')
-              .length
-              .toString();
           idleCount.value = vehicles
               .where((v) => v.status == 'Idle')
               .length
               .toString();
-          inactiveCount.value = vehicles
-              .where((v) => v.status == 'Inactive')
+          stoppedCount.value = vehicles
+              .where((v) => v.status == 'Stopped' || v.status == 'Stop')
               .length
               .toString();
+          final exp = vehicles
+              .where((v) => v.status == 'Expired' || v.status == 'Inactive')
+              .length
+              .toString();
+          expiredCount.value = exp;
+          inactiveCount.value = exp;
         }
       }
     } catch (e) {
       errorMessage.value = "An error occurred: $e";
+      debugPrint('==================== [HOME API ERROR] ====================');
       debugPrint("Error loading data: $e");
+      debugPrint('==========================================================');
     } finally {
       isLoading.value = false;
     }

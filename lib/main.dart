@@ -16,10 +16,25 @@ import 'views/tracking/tracking_view.dart';
 import 'views/tracking/vehicle_detail_map_view.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'services/fcm_service.dart';
 import 'config/dio_client.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    await FcmService.instance.init();
+  } catch (e) {
+    debugPrint('[FCM] Firebase initialization error: $e');
+  }
+
   final prefs = await SharedPreferences.getInstance();
   final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
   final token = prefs.getString('token');

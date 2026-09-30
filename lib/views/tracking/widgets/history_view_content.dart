@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-import 'package:airotrack_web/constants/app_assets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
@@ -8,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../config/api_config.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/custom_media_query.dart';
+import 'top_view_car.dart';
 
 class HistoryViewContent extends StatelessWidget {
   const HistoryViewContent({super.key});
@@ -40,7 +39,9 @@ class HistoryViewContent extends StatelessWidget {
                 : (lat != 0 && lng != 0
                       ? LatLng(lat, lng)
                       : const LatLng(10.038, 76.325)));
-        final flagPos = activeRoute.isNotEmpty ? activeRoute.last : null;
+        // Start and end of the drawn route (green and red location pins).
+        final routeStart = activeRoute.isNotEmpty ? activeRoute.first : null;
+        final routeEnd = activeRoute.length >= 2 ? activeRoute.last : null;
         final mapCenter = activeRoute.isNotEmpty
             ? activeRoute.first
             : (lat != 0 && lng != 0
@@ -59,13 +60,20 @@ class HistoryViewContent extends StatelessWidget {
                   controller.fitHistoryRoute();
                 },
                 onTap: (tapPosition, point) {
-                  controller.toggleHistoryMapDialog();
+                  // Show time + address of the route point nearest the tap.
+                  controller.onHistoryMapTap(point);
                 },
               ),
               children: [
                 TileLayer(
-                  urlTemplate: ApiConfig.googleMapTileUrl,
-                  subdomains: ApiConfig.googleMapSubdomains,
+                  key: ValueKey(controller.mapLayer.value),
+                  urlTemplate: controller.tileUrlFor(
+                    ApiConfig.googleMapTileUrl,
+                  ),
+                  subdomains: controller.tileSubdomainsFor(
+                    ApiConfig.googleMapTileUrl,
+                    ApiConfig.googleMapSubdomains,
+                  ),
                   userAgentPackageName: 'com.airotrack.app',
                 ),
                 // Dynamic Route Polylines
@@ -87,9 +95,68 @@ class HistoryViewContent extends StatelessWidget {
                         ),
                     ],
                   ),
+                // Recorded GPS points (location button)
+                if (controller.showHistoryPoints.value)
+                  CircleLayer(
+                    circles: [
+                      for (final p in controller.historyPointDots)
+                        CircleMarker(
+                          point: p,
+                          radius: 3,
+                          color: const Color(0xFF0288D1),
+                          borderColor: Colors.white,
+                          borderStrokeWidth: 1,
+                        ),
+                    ],
+                  ),
+                // Parking stops (P button)
+                if (controller.showHistoryStops.value)
+                  MarkerLayer(
+                    markers: [
+                      for (final stop in controller.historyStops)
+                        Marker(
+                          point: stop['point'] as LatLng,
+                          width: 24,
+                          height: 24,
+                          child: GestureDetector(
+                            onTap: () => controller.onHistoryStopTap(stop),
+                            child: const _HistoryParkingBadge(),
+                          ),
+                        ),
+                    ],
+                  ),
                 // Dynamic Vehicle & Location Flag PNG Markers
                 MarkerLayer(
                   markers: [
+                    // Route start pin (green)
+                    if (routeStart != null)
+                      Marker(
+                        point: routeStart,
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.topCenter,
+                        child: const Icon(
+                          Icons.location_on,
+                          size: 30,
+                          color: Color(0xFF12B76A),
+                        ),
+                      ),
+                    // Route end pin (red)
+                    if (routeEnd != null)
+                      Marker(
+                        point: routeEnd,
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.topCenter,
+                        child: GestureDetector(
+                          onTap: controller.toggleHistoryMapDialog,
+                          child: const Icon(
+                            Icons.location_on,
+                            size: 30,
+                            color: Color(0xFFE53935),
+                          ),
+                        ),
+                      ),
                     // Vehicle Marker (Normal upright when stopped/resting, aligned with moving direction when playing)
                     Marker(
                       point: vehiclePos,
@@ -97,37 +164,25 @@ class HistoryViewContent extends StatelessWidget {
                       height: 44,
                       alignment: Alignment.center,
                       child: GestureDetector(
-                        onTap: controller.toggleHistoryMapDialog,
-                        child: !controller.isPlaying.value
-                            ? Image.asset(
-                                AppAssets.greenCar,
-                                fit: BoxFit.contain,
-                              )
-                            : Transform.rotate(
-                                angle:
-                                    (((controller.movingMarkerBearing.value ??
-                                            90.0) -
-                                        90.0) *
-                                    (math.pi / 180.0)),
-                                child: Image.asset(
-                                  AppAssets.greenCar,
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
+                        onTap: controller.onHistoryCarTap,
+                        // Top-view car, front facing the direction of travel.
+                        child: Transform.rotate(
+                          angle: controller.historyTopViewRotationRad,
+                          child: const Center(child: TopViewCar()),
+                        ),
                       ),
                     ),
-                    // Location Flag Marker
-                    if (flagPos != null)
+                    // Pin on the route point the user tapped
+                    if (controller.historyTapPoint.value != null)
                       Marker(
-                        point: flagPos,
-                        width: 22,
-                        height: 22,
-                        child: GestureDetector(
-                          onTap: controller.toggleHistoryMapDialog,
-                          child: Image.asset(
-                            AppAssets.flag,
-                            fit: BoxFit.contain,
-                          ),
+                        point: controller.historyTapPoint.value!,
+                        width: 28,
+                        height: 28,
+                        alignment: Alignment.topCenter,
+                        child: const Icon(
+                          Icons.location_on,
+                          size: 28,
+                          color: Color(0xFFE53935),
                         ),
                       ),
                   ],
@@ -234,11 +289,18 @@ class HistoryViewContent extends StatelessWidget {
               right: 16,
               child: Column(
                 children: [
-                  const _HistoryMapIconButton(icon: Icons.map_outlined),
-                  const _HistoryMapIconButton(icon: Icons.location_on_outlined),
-                  const _HistoryMapIconButton(
+                  _HistoryMapIconButton(
+                    icon: Icons.map_outlined,
+                    onTap: controller.cycleMapLayer,
+                  ),
+                  _HistoryMapIconButton(
+                    icon: Icons.location_on_outlined,
+                    onTap: controller.toggleHistoryPoints,
+                  ),
+                  _HistoryMapIconButton(
                     text: 'P',
-                    color: Color(0xFF00A859),
+                    color: const Color(0xFF00A859),
+                    onTap: controller.toggleHistoryStops,
                   ),
                   _HistoryMapIconButton(
                     icon: Icons.my_location_rounded,
@@ -1090,6 +1152,32 @@ class HistoryViewContent extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Small square "P" marker for a parking stop on the history route.
+class _HistoryParkingBadge extends StatelessWidget {
+  const _HistoryParkingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFF00A859),
+        borderRadius: BorderRadius.circular(4), // square P box
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 3)],
+      ),
+      child: const Text(
+        'P',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 }

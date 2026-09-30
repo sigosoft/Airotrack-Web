@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,6 +68,171 @@ class DashboardController extends GetxController {
   final RxBool isGeofenceReportLoading = false.obs;
 
   late final HomeController homeController;
+
+  /// Fleet status from the dashboard API, one entry per status:
+  /// {'key': running|idle|stopped|inactive|expired|nodata,
+  ///  'title': String, 'count': int, 'color': int? (ARGB, from backend)}
+  final RxList<Map<String, dynamic>> fleetStatus = <Map<String, dynamic>>[].obs;
+  final RxInt fleetTotal = 0.obs;
+
+  /// True once a dashboard API response has been read. Until then the
+  /// Fleet Status chart shows a loader instead of any placeholder numbers.
+  final RxBool fleetLoaded = false.obs;
+
+  static const List<String> _fleetOrder = [
+    'running',
+    'idle',
+    'stopped',
+    'inactive',
+    'expired',
+    'nodata',
+  ];
+
+  /// Maps any backend status name to one of the keys above.
+  static String? _fleetKey(String raw) {
+    final s = raw.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    if (s.startsWith('run') || s == 'moving') return 'running';
+    if (s.startsWith('idl')) return 'idle';
+    if (s.startsWith('stop') || s == 'parked') return 'stopped';
+    if (s.startsWith('inactive') || s == 'offline') return 'inactive';
+    if (s.startsWith('expir')) return 'expired';
+    if (s.startsWith('nodata') || s == 'nogps' || s == 'nosignal') {
+      return 'nodata';
+    }
+    if (s.startsWith('total') || s.startsWith('all')) return 'total';
+    return null;
+  }
+
+  /// Colour sent by the backend: '#RRGGBB', '#AARRGGBB', 'RRGGBB',
+  /// '0xFFRRGGBB', 'rgb(r,g,b)', an int, or a basic colour name.
+  static int? _parseBackendColor(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v <= 0xFFFFFF ? (0xFF000000 | v) : v;
+    var s = v.toString().trim().toLowerCase();
+    if (s.isEmpty || s == 'null') return null;
+    final rgb = RegExp(
+      r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)',
+    ).firstMatch(s);
+    if (rgb != null) {
+      final r = int.parse(rgb.group(1)!).clamp(0, 255);
+      final g = int.parse(rgb.group(2)!).clamp(0, 255);
+      final b = int.parse(rgb.group(3)!).clamp(0, 255);
+      return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+    const named = {
+      'green': 0xFF2E7D32,
+      'red': 0xFFD32F2F,
+      'orange': 0xFFF57C00,
+      'yellow': 0xFFFBC02D,
+      'blue': 0xFF0288D1,
+      'grey': 0xFF757575,
+      'gray': 0xFF757575,
+      'black': 0xFF212121,
+      'purple': 0xFF7B1FA2,
+    };
+    if (named.containsKey(s)) return named[s];
+    s = s.replaceFirst('#', '').replaceFirst('0x', '');
+    if (!RegExp(r'^[0-9a-f]{6}([0-9a-f]{2})?$').hasMatch(s)) return null;
+    final n = int.parse(s, radix: 16);
+    return s.length == 6 ? (0xFF000000 | n) : n;
+  }
+
+  /// Reads the fleet status from the dashboard response. Supports a list of
+  /// {status, count, color} items or a map of counts (+ optional colours).
+  void _parseFleetStatus(Map data) {
+    final raw =
+        data['fleet_status'] ??
+        data['fleetStatus'] ??
+        data['statistics'] ??
+        data['summary'];
+    final byKey = <String, Map<String, dynamic>>{};
+    int total = 0;
+
+    int toInt(dynamic v) => int.tryParse(v?.toString() ?? '') ?? 0;
+
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final label =
+            (item['status'] ??
+                    item['name'] ??
+                    item['title'] ??
+                    item['label'] ??
+                    item['key'] ??
+                    '')
+                .toString();
+        final key = _fleetKey(label);
+        if (key == null) continue;
+        final count = toInt(
+          item['count'] ?? item['value'] ?? item['total'] ?? item['vehicles'],
+        );
+        if (key == 'total') {
+          total = count;
+          continue;
+        }
+        byKey[key] = {
+          'key': key,
+          'title': label,
+          'count': count,
+          'color': _parseBackendColor(
+            item['color'] ??
+                item['colour'] ??
+                item['color_code'] ??
+                item['colorCode'] ??
+                item['hex'] ??
+                item['bg_color'],
+          ),
+        };
+      }
+    } else if (raw is Map) {
+      final colors = raw['colors'] ?? raw['colours'] ?? data['status_colors'];
+      raw.forEach((k, v) {
+        if (v is Map || v is List) return;
+        final name = k.toString();
+        if (name.toLowerCase().contains('color') ||
+            name.toLowerCase().contains('colour')) {
+          return;
+        }
+        final key = _fleetKey(name.replaceAll('_vehicles', ''));
+        if (key == null) return;
+        if (key == 'total') {
+          total = toInt(v);
+          return;
+        }
+        dynamic c;
+        if (colors is Map) {
+          c =
+              colors[name] ??
+              colors[name.replaceAll('_vehicles', '')] ??
+              colors[key];
+        }
+        c ??=
+            raw['${name.replaceAll('_vehicles', '')}_color'] ??
+            raw['${key}_color'];
+        byKey[key] = {
+          'key': key,
+          'title': null,
+          'count': toInt(v),
+          'color': _parseBackendColor(c),
+        };
+      });
+    }
+
+    fleetLoaded.value = true;
+    if (byKey.isEmpty) {
+      // The response has no per-status counts: show exactly that.
+      fleetStatus.clear();
+      fleetTotal.value = total;
+      return;
+    }
+    fleetStatus.assignAll([
+      for (final k in _fleetOrder)
+        if (byKey[k] != null) byKey[k]!,
+    ]);
+    fleetTotal.value = total > 0
+        ? total
+        : byKey.values.fold<int>(0, (a, e) => a + (e['count'] as int));
+  }
 
   @override
   void onInit() {
@@ -165,6 +331,9 @@ class DashboardController extends GetxController {
     final inactive =
         int.tryParse(homeController.inactiveCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Inactive').length;
+    // Expired count; the Home list may not send one, then inactive vehicles
+    // are the expired ones (same rule the Fleet Status chart used).
+    final expired = int.tryParse(homeController.expiredCount.value) ?? inactive;
 
     List<VehicleItem> items = [];
 
@@ -182,50 +351,15 @@ class DashboardController extends GetxController {
 
     dashboardData.value = DashboardModel(
       userName: dashboardData.value.userName,
-      summaryList: [
-        VehicleStatusSummary(
-          title: 'All Vehicles',
-          count: total,
-          colorHex: 0xFF0288D1,
-          lightBgHex: 0xFFE1F5FE,
-        ),
-        VehicleStatusSummary(
-          title: 'Running',
-          count: running,
-          colorHex: 0xFF2E7D32,
-          lightBgHex: 0xFFE8F5E9,
-        ),
-        VehicleStatusSummary(
-          title: 'Stopped',
-          count: stopped,
-          colorHex: 0xFFD32F2F,
-          lightBgHex: 0xFFFFEBEE,
-        ),
-        VehicleStatusSummary(
-          title: 'Idle',
-          count: idle,
-          colorHex: 0xFFF57C00,
-          lightBgHex: 0xFFFFF8E1,
-        ),
-        VehicleStatusSummary(
-          title: 'In Active',
-          count: inactive,
-          colorHex: 0xFF0288D1,
-          lightBgHex: 0xFFE1F5FE,
-        ),
-        VehicleStatusSummary(
-          title: 'Expired',
-          count: 0,
-          colorHex: 0xFFE65100,
-          lightBgHex: 0xFFFBE9E7,
-        ),
-        VehicleStatusSummary(
-          title: 'No Data',
-          count: 0,
-          colorHex: 0xFF757575,
-          lightBgHex: 0xFFF5F5F5,
-        ),
-      ],
+      summaryList: _buildSummaryList(
+        total: total,
+        running: running,
+        idle: idle,
+        stopped: stopped,
+        expired: expired,
+        inactive: inactive,
+        noData: 0,
+      ),
       vehicleList: items.isNotEmpty ? items : dashboardData.value.vehicleList,
       engineHoursData: dashboardData.value.engineHoursData,
       travelDistanceData: dashboardData.value.travelDistanceData,
@@ -254,6 +388,91 @@ class DashboardController extends GetxController {
         detailCtrl.updateFromVehicle(selectedVeh);
       }
     }
+  }
+
+  /// Dashboard status cards, in this order:
+  /// All Vehicles, Running, Stopped, Idle, Expired.
+  /// "In Active" and "No Data" are hidden (kept here, not shown) - set
+  /// [_hiddenStatusCards] to show them again.
+  static const Set<String> _hiddenStatusCards = {'In Active', 'No Data'};
+
+  static List<VehicleStatusSummary> _buildSummaryList({
+    required int total,
+    required int running,
+    required int idle,
+    required int stopped,
+    required int expired,
+    required int inactive,
+    required int noData,
+  }) {
+    final all = [
+      VehicleStatusSummary(
+        title: 'All Vehicles',
+        count: total,
+        colorHex: 0xFF0288D1,
+        lightBgHex: 0xFFE1F5FE,
+      ),
+      VehicleStatusSummary(
+        title: 'Running',
+        count: running,
+        colorHex: 0xFF2E7D32,
+        lightBgHex: 0xFFE8F5E9,
+      ),
+      VehicleStatusSummary(
+        title: 'Stopped',
+        count: stopped,
+        colorHex: 0xFFD32F2F,
+        lightBgHex: 0xFFFFEBEE,
+      ),
+      VehicleStatusSummary(
+        title: 'Idle',
+        count: idle,
+        colorHex: 0xFFF57C00,
+        lightBgHex: 0xFFFFF8E1,
+      ),
+      VehicleStatusSummary(
+        title: 'Expired',
+        count: expired,
+        colorHex: 0xFFE65100,
+        lightBgHex: 0xFFFBE9E7,
+      ),
+      VehicleStatusSummary(
+        title: 'In Active',
+        count: inactive,
+        colorHex: 0xFF0288D1,
+        lightBgHex: 0xFFE1F5FE,
+      ),
+      VehicleStatusSummary(
+        title: 'No Data',
+        count: noData,
+        colorHex: 0xFF757575,
+        lightBgHex: 0xFFF5F5F5,
+      ),
+    ];
+    return all.where((c) => !_hiddenStatusCards.contains(c.title)).toList();
+  }
+
+  /// Rounds a chart maximum up to a clean number (e.g. 360.6 -> 400,
+  /// 117 -> 120, 0 -> 10).
+  static double _niceCeil(double v) {
+    if (v <= 0) return 10;
+    final mag = pow(10, (log(v) / ln10).floor()).toDouble();
+    for (final step in [
+      1.0,
+      1.2,
+      1.5,
+      2.0,
+      2.5,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      8.0,
+      10.0,
+    ]) {
+      if (step * mag >= v) return step * mag;
+    }
+    return 10 * mag;
   }
 
   void toggleReportsExpand() {
@@ -307,50 +526,15 @@ class DashboardController extends GetxController {
 
   final Rx<DashboardModel> dashboardData = DashboardModel(
     userName: 'User',
-    summaryList: [
-      VehicleStatusSummary(
-        title: 'All Vehicles',
-        count: 0,
-        colorHex: 0xFF0288D1,
-        lightBgHex: 0xFFE1F5FE,
-      ),
-      VehicleStatusSummary(
-        title: 'Running',
-        count: 0,
-        colorHex: 0xFF2E7D32,
-        lightBgHex: 0xFFE8F5E9,
-      ),
-      VehicleStatusSummary(
-        title: 'Stopped',
-        count: 0,
-        colorHex: 0xFFD32F2F,
-        lightBgHex: 0xFFFFEBEE,
-      ),
-      VehicleStatusSummary(
-        title: 'Idle',
-        count: 0,
-        colorHex: 0xFFF57C00,
-        lightBgHex: 0xFFFFF8E1,
-      ),
-      VehicleStatusSummary(
-        title: 'In Active',
-        count: 0,
-        colorHex: 0xFF0288D1,
-        lightBgHex: 0xFFE1F5FE,
-      ),
-      VehicleStatusSummary(
-        title: 'Expired',
-        count: 0,
-        colorHex: 0xFFE65100,
-        lightBgHex: 0xFFFBE9E7,
-      ),
-      VehicleStatusSummary(
-        title: 'No Data',
-        count: 0,
-        colorHex: 0xFF757575,
-        lightBgHex: 0xFFF5F5F5,
-      ),
-    ],
+    summaryList: _buildSummaryList(
+      total: 0,
+      running: 0,
+      idle: 0,
+      stopped: 0,
+      expired: 0,
+      inactive: 0,
+      noData: 0,
+    ),
     vehicleList: [],
     engineHoursData: _getInitialEngineHours(),
     travelDistanceData: _getInitialTravelDistance(),
@@ -454,6 +638,9 @@ class DashboardController extends GetxController {
       });
     }
 
+    // Fleet status (counts + backend colours) for the Fleet Status chart
+    _parseFleetStatus(data);
+
     // Parse statistics / fleet_status
     final stats =
         data['fleet_status'] ?? data['statistics'] ?? data['summary'] ?? data;
@@ -464,6 +651,7 @@ class DashboardController extends GetxController {
         inactive = 0,
         expired = 0,
         noData = 0;
+    bool expiredSent = false;
 
     if (stats is Map) {
       total =
@@ -501,6 +689,8 @@ class DashboardController extends GetxController {
                 '',
           ) ??
           0;
+      expiredSent =
+          stats['expired_vehicles'] != null || stats['expired'] != null;
       expired =
           int.tryParse(
             stats['expired_vehicles']?.toString() ??
@@ -557,19 +747,43 @@ class DashboardController extends GetxController {
               '';
           final km =
               double.tryParse(
-                item['distance']?.toString() ??
+                item['distance_km']?.toString() ??
+                    item['distance']?.toString() ??
                     item['distanceKm']?.toString() ??
                     item['value']?.toString() ??
                     '',
               ) ??
               0.0;
-          final maxKm =
-              double.tryParse(item['maxKm']?.toString() ?? '') ?? 144.0;
           distanceList.add(
-            TravelDistanceDataPoint(date: label, distanceKm: km, maxKm: maxKm),
+            TravelDistanceDataPoint(date: label, distanceKm: km, maxKm: 0),
           );
         }
       }
+      // Chart scale from the response: the backend's maxKm if it sends one,
+      // otherwise the largest day rounded up (was a fixed 144 km, which cut
+      // off days like 360 km).
+      double scale = 0;
+      for (final item in rawDist) {
+        if (item is Map) {
+          final m = double.tryParse(item['maxKm']?.toString() ?? '');
+          if (m != null && m > scale) scale = m;
+        }
+      }
+      if (scale <= 0) {
+        final top = distanceList.fold<double>(
+          0,
+          (a, p) => p.distanceKm > a ? p.distanceKm : a,
+        );
+        scale = _niceCeil(top);
+      }
+      distanceList = [
+        for (final p in distanceList)
+          TravelDistanceDataPoint(
+            date: p.date,
+            distanceKm: p.distanceKm,
+            maxKm: scale,
+          ),
+      ];
     }
 
     // Vehicles list
@@ -643,73 +857,39 @@ class DashboardController extends GetxController {
 
     dashboardData.value = DashboardModel(
       userName: name,
-      summaryList: [
-        VehicleStatusSummary(
-          title: 'All Vehicles',
-          count: total > 0
-              ? total
-              : (int.tryParse(homeController.totalCount.value) ??
-                    homeController.vehicles.length),
-          colorHex: 0xFF0288D1,
-          lightBgHex: 0xFFE1F5FE,
-        ),
-        VehicleStatusSummary(
-          title: 'Running',
-          count: running > 0
-              ? running
-              : (int.tryParse(homeController.runningCount.value) ??
-                    homeController.vehicles
-                        .where((v) => v.status == 'Running')
-                        .length),
-          colorHex: 0xFF2E7D32,
-          lightBgHex: 0xFFE8F5E9,
-        ),
-        VehicleStatusSummary(
-          title: 'Stopped',
-          count: stopped > 0
-              ? stopped
-              : (int.tryParse(homeController.stoppedCount.value) ??
-                    homeController.vehicles
-                        .where((v) => v.status == 'Stopped')
-                        .length),
-          colorHex: 0xFFD32F2F,
-          lightBgHex: 0xFFFFEBEE,
-        ),
-        VehicleStatusSummary(
-          title: 'Idle',
-          count: idle > 0
-              ? idle
-              : (int.tryParse(homeController.idleCount.value) ??
-                    homeController.vehicles
-                        .where((v) => v.status == 'Idle')
-                        .length),
-          colorHex: 0xFFF57C00,
-          lightBgHex: 0xFFFFF8E1,
-        ),
-        VehicleStatusSummary(
-          title: 'In Active',
-          count: inactive > 0
-              ? inactive
-              : (int.tryParse(homeController.inactiveCount.value) ??
-                    homeController.vehicles
-                        .where((v) => v.status == 'Inactive')
-                        .length),
-          colorHex: 0xFF0288D1,
-          lightBgHex: 0xFFE1F5FE,
-        ),
-        VehicleStatusSummary(
-          title: 'Expired',
-          count: expired,
-          colorHex: 0xFFE65100,
-          lightBgHex: 0xFFFBE9E7,
-        ),
-        VehicleStatusSummary(
-          title: 'No Data',
-          count: noData,
-          colorHex: 0xFF757575,
-          lightBgHex: 0xFFF5F5F5,
-        ),
-      ],
+      summaryList: _buildSummaryList(
+        total: total > 0
+            ? total
+            : (int.tryParse(homeController.totalCount.value) ??
+                  homeController.vehicles.length),
+        running: running > 0
+            ? running
+            : (int.tryParse(homeController.runningCount.value) ??
+                  homeController.vehicles
+                      .where((v) => v.status == 'Running')
+                      .length),
+        idle: idle > 0
+            ? idle
+            : (int.tryParse(homeController.idleCount.value) ??
+                  homeController.vehicles
+                      .where((v) => v.status == 'Idle')
+                      .length),
+        stopped: stopped > 0
+            ? stopped
+            : (int.tryParse(homeController.stoppedCount.value) ??
+                  homeController.vehicles
+                      .where((v) => v.status == 'Stopped')
+                      .length),
+        expired: expiredSent
+            ? expired
+            : (inactive > 0
+                  ? inactive
+                  : (int.tryParse(homeController.expiredCount.value) ??
+                        int.tryParse(homeController.inactiveCount.value) ??
+                        0)),
+        inactive: inactive,
+        noData: noData,
+      ),
       vehicleList: vehicleItems.isNotEmpty
           ? vehicleItems
           : dashboardData.value.vehicleList,

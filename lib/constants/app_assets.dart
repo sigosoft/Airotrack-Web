@@ -4,10 +4,12 @@ class AppAssets {
   static const String logo = 'lib/assets/images/Logo.png';
   static const String background = 'lib/assets/images/Background.png';
   static const String greenCar = 'lib/assets/images/Green Car.png';
+  static const String greenCarTop = 'lib/assets/images/green_car_top.png';
   static const String redCar = 'lib/assets/images/Red Car.png';
   static const String accuracy = 'lib/assets/images/Accuracy.png';
+  static const String altitude = 'lib/assets/images/Distance copy.png';
   static const String avgSpeed = 'lib/assets/images/Avg speed.png';
-  static const String battery = 'lib/assets/images/Battery.png';
+  static const String battery = 'lib/assets/images/Battery1.png';
   static const String carBattery = 'lib/assets/images/Car battery.png';
   static const String fuels = 'lib/assets/images/Fuels.png';
   static const String maxSpeed = 'lib/assets/images/Max speed.png';
@@ -26,7 +28,7 @@ class AppAssets {
   static const String successTick = 'lib/assets/images/Sucess tick.png';
 
   // Toolbar Action Assets above Device Time / Server Time
-  static const String ignition = 'lib/assets/images/Ignition.png';
+  static const String ignition = 'lib/assets/images/Key start.png';
   static const String onOff = 'lib/assets/images/On_Off.png';
   static const String batteryCharge = 'lib/assets/images/battery charge.png';
   static const String power = 'lib/assets/images/Power.png';
