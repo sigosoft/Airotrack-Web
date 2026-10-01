@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:airotrack_web/constants/app_strings.dart';
-import 'package:airotrack_web/services/app_settings.dart';
 import 'package:dio/dio.dart' as dio_pkg;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -16,6 +14,7 @@ import '../models/live_track_model.dart';
 import '../models/vehicle_detail_model.dart';
 import '../models/vehicle_model.dart';
 import '../services/directions_service.dart';
+import '../services/app_settings.dart';
 import '../services/live_track_websocket_service.dart';
 import '../utils/app_toast.dart';
 import 'alerts_controller.dart';
@@ -54,8 +53,10 @@ class VehicleDetailController extends GetxController {
   LatLng? _lastAcceptedGps;
   DateTime? _lastGpsTime;
   double _lastReportedSpeedKmh = 0.0;
-  double _expectedPingSec = 4.0;
+  double _expectedPingSec = 10.0;
   String? _lastAcceptedDeviceTime;
+  DateTime? _lastAcceptedFixTime;
+  LatLng? _prevRawFix;
   bool _liveHeadingKnown = false; // heading taken from real movement
   Timer? _livePollingTimer;
   DateTime _lastLiveUpdateReceivedAt = DateTime.now();
@@ -70,7 +71,11 @@ class VehicleDetailController extends GetxController {
 
   // A fix older than this is shown as not moving (speed 0) instead of
   // repeating the last reported speed while the device is silent.
-  static const Duration _liveStaleAfter = Duration(minutes: 2);
+  // Trackers often deliver their data a few minutes late (network gaps,
+  // weak signal on highways). 2 minutes showed a moving vehicle as 0 km/h
+  // while the vehicle list showed its real speed; 10 minutes keeps them in
+  // step and still shows 0 for a vehicle that has really stopped sending.
+  static const Duration _liveStaleAfter = Duration(minutes: 10);
 
   // History Playback Engine
   final RxDouble playbackProgress = 0.0.obs;
@@ -1692,7 +1697,11 @@ class VehicleDetailController extends GetxController {
     final bool hasHomeFix =
         lat != null && lng != null && (lat != 0.0 || lng != 0.0);
 
-    if (isSameLiveSession && hasHomeFix) {
+    // The Home list position has no device time and is often older than
+    // the snapshot / WebSocket fix: feeding it made the car go BACK and
+    // then forward again (and turn around). Use it only until the first
+    // timed fix of this live session has arrived.
+    if (isSameLiveSession && hasHomeFix && _lastLiveFixTime == null) {
       _onLiveDevicePosition(
         LatLng(lat!, lng!),
         speed,
@@ -3619,8 +3628,11 @@ class VehicleDetailController extends GetxController {
       _roadFetchInFlight = false;
       _lastLiveFixTime = null;
       _lastAcceptedDeviceTime = null;
+      _lastAcceptedFixTime = null;
+      _prevRawFix = null;
       _liveHeadingKnown = false;
       _liveTrace.clear();
+      _rtReset();
     }
 
     try {
@@ -4284,15 +4296,71 @@ class VehicleDetailController extends GetxController {
       _lastAcceptedDeviceTime = deviceTime;
     }
 
+    // Live movement: road engine (same model as the mobile app).
+    if (_useRoadEngine) {
+      _rtOnDevicePosition(
+        location,
+        speedKmH,
+        status: status,
+        courseDeg: courseDeg,
+      );
+      return;
+    }
+
     final now = DateTime.now();
     final previousGps = _lastAcceptedGps;
     final previousGpsTime = _lastGpsTime;
+
+    if (previousGps != null && liveMarkerPosition.value != null) {
+      final anchor0 = previousGps;
+      final d0 = _calculateDistance(anchor0, location);
+      // a) GPS spike: further than the vehicle can have driven since the
+      //    last fix (bad fix far from the road) -> ignore it.
+      final fixT = _parseFixTime(deviceTime);
+      final prevT = _lastAcceptedFixTime;
+      final dt = (fixT != null && prevT != null)
+          ? fixT.difference(prevT).inMilliseconds / 1000.0
+          : (previousGpsTime == null
+                ? 0.0
+                : now.difference(previousGpsTime).inMilliseconds / 1000.0);
+      if (dt > 0.5 && d0 < 3000.0) {
+        final maxMps = math.max(speedKmH, 40.0) / 3.6 * 2.0 + 15.0;
+        if (d0 / dt > maxMps) {
+          debugPrint(
+            '[LiveTrack] Ignoring GPS spike (${d0.round()} m in ${dt.toStringAsFixed(0)} s)',
+          );
+          return;
+        }
+      }
+      // b) Small step BACKWARDS while driving (jitter / late fix): ignore,
+      //    so the car never goes back and turns around.
+      if (_prevRawFix != null &&
+          _calculateDistance(_prevRawFix!, anchor0) > 5.0 &&
+          d0 < 60.0 &&
+          d0 > 0.5) {
+        final travel = _getBearing(_prevRawFix!, anchor0);
+        final toFix = _getBearing(anchor0, location);
+        var diff = (toFix - travel).abs() % 360;
+        if (diff > 180) diff = 360 - diff;
+        if (diff > 110) {
+          debugPrint('[LiveTrack] Ignoring backward step (${d0.round()} m)');
+          return;
+        }
+      }
+    }
+    if (_parseFixTime(deviceTime) != null) {
+      _lastAcceptedFixTime = _parseFixTime(deviceTime);
+    }
+    if (previousGps != null) _prevRawFix = previousGps;
 
     _lastReportedSpeedKmh = speedKmH;
     if (previousGpsTime != null) {
       final interval = now.difference(previousGpsTime).inMilliseconds / 1000.0;
       if (interval >= 0.8 && interval < 120.0) {
-        _expectedPingSec = _expectedPingSec * 0.7 + interval * 0.3;
+        // Follow longer gaps quickly (so the car does not run out of path),
+        // shorter ones slowly.
+        final w = interval > _expectedPingSec ? 0.5 : 0.25;
+        _expectedPingSec = _expectedPingSec * (1 - w) + interval * w;
       }
     }
 
@@ -4326,10 +4394,44 @@ class VehicleDetailController extends GetxController {
     // shifts nor turns sideways while standing.
     if (!isMoving && dist < 30.0) return;
 
-    if (dist >= 0.5) {
-      _liveWaypoints.add(location);
-      _requestSnappedPath(anchor, location);
+    // Safety net: if the car has drifted away from the real position (bad
+    // road geometry), bring it back onto the real fix right away.
+    final carNow = liveMarkerPosition.value!;
+    // (Checked against the PREVIOUS real fix, which the path must pass
+    // near, and only when no fix is still waiting for Google.)
+    if (_calculateDistance(carNow, location) > 1500.0 ||
+        (_snapPending == 0 &&
+            previousGps != null &&
+            _distToQueuedPath(previousGps) > 60.0)) {
+      _snapLiveMarkerTo(location, speedKmH, courseDeg: courseDeg);
+      return;
     }
+
+    if (dist >= 0.5) {
+      // The car only ever drives to ROAD points: the new fix is first put
+      // on the road (Google), then added. Fixes are handled one after the
+      // other so the path stays in order. Meanwhile the car keeps creeping
+      // towards the previous (road) point.
+      _snapPending++;
+      _snapChain = _snapChain
+          .then((_) => _queueSnappedFix(location))
+          .whenComplete(() => _snapPending--);
+    }
+  }
+
+  Future<void> _snapChain = Future.value();
+  int _snapPending = 0;
+
+  /// Distance from [p] to the nearest point of the car's remaining path.
+  double _distToQueuedPath(LatLng p) {
+    double best = double.infinity;
+    for (int i = _liveWaypointIndex; i < _liveWaypoints.length; i++) {
+      final d = _calculateDistance(_liveWaypoints[i], p);
+      if (d < best) best = d;
+    }
+    final car = liveMarkerPosition.value;
+    if (car != null) best = math.min(best, _calculateDistance(car, p));
+    return best;
   }
 
   // Last raw GPS fixes, used to put the newest one on the right road.
@@ -4338,82 +4440,135 @@ class VehicleDetailController extends GetxController {
   /// Puts the newest fix ON the road and follows the road to it, using
   /// Google Roads (same as History, same roads as the Google map). Several
   /// recent fixes are sent together so Google knows the driving direction
-  /// and picks the correct side of a divided road. Falls back to the old
-  /// road route between the two fixes when Google does not answer.
-  Future<void> _requestSnappedPath(LatLng from, LatLng to) async {
+  /// and picks the correct side of a divided road. Only when Google cannot
+  /// answer (within 3 s) is the raw fix used, with the road route to it.
+  Future<void> _queueSnappedFix(LatLng to) async {
+    final session = _liveSessionId;
+    if (_liveWaypoints.isEmpty) return;
+    final from = _liveWaypoints.last;
     _liveTrace.add(to);
     if (_liveTrace.length > 6) _liveTrace.removeAt(0);
     final trace = List<LatLng>.from(_liveTrace);
-    final session = _liveSessionId;
-    if (trace.length < 2) {
-      _requestRoadPath(from, to);
-      return;
-    }
-    final res = await _googleSnap(
-      trace,
-      List<int>.generate(trace.length, (i) => i),
-    );
-    if (_liveDisposed || session != _liveSessionId) return;
-    if (res == null || res.$1.length < 2) {
-      _requestRoadPath(from, to);
-      return;
-    }
-    // Snapped points of the last stretch (previous fix -> newest fix).
-    final n = trace.length;
-    final path = <LatLng>[];
-    for (int k = 0; k < res.$1.length; k++) {
-      if (res.$2[k] >= n - 2) path.add(res.$1[k]);
-    }
-    if (path.isEmpty) {
-      _requestRoadPath(from, to);
-      return;
-    }
-    final snappedTo = path.last;
-    // Never a loop / jump: the road path must be close to the straight hop.
-    double len = 0;
-    for (int k = 0; k < path.length - 1; k++) {
-      len += _calculateDistance(path[k], path[k + 1]);
-    }
-    final straight = _calculateDistance(from, to);
-    if (len > straight * 1.5 + 40.0 ||
-        _calculateDistance(snappedTo, to) > 60.0) {
-      _requestRoadPath(from, to);
-      return;
-    }
-    // Same fix in the trace becomes the snapped one for the next request.
-    final ti = _liveTrace.indexWhere((p) => _calculateDistance(p, to) < 0.5);
-    if (ti >= 0) _liveTrace[ti] = snappedTo;
 
-    // Find the queued segment that ends at the raw fix.
-    int seg = -1;
-    for (int i = _liveWaypoints.length - 1; i >= 1; i--) {
-      if (_calculateDistance(_liveWaypoints[i], to) < 0.5) {
-        seg = i - 1;
-        break;
+    (List<LatLng>, List<int>)? res;
+    if (trace.length >= 2) {
+      try {
+        res = await _googleSnap(
+          trace,
+          List<int>.generate(trace.length, (i) => i),
+        ).timeout(const Duration(seconds: 3));
+      } catch (_) {
+        res = null;
       }
     }
-    if (seg < 0 || seg < _liveWaypointIndex) return; // already passed
-    final interior = [
-      for (final p in path)
-        if (_calculateDistance(p, snappedTo) >= 1.0) p,
-    ];
-    if (seg > _liveWaypointIndex) {
-      // Car not on this segment yet: replace the raw fix with the road one
-      // and insert the road points before it.
-      _liveWaypoints[seg + 1] = snappedTo;
-      _liveWaypoints.insertAll(seg + 1, interior);
+    if (_liveDisposed || session != _liveSessionId) return;
+
+    List<LatLng>? path;
+    if (res != null && res.$1.length >= 2) {
+      final n = trace.length;
+      path = [
+        for (int k = 0; k < res.$1.length; k++)
+          if (res.$2[k] >= n - 2) res.$1[k],
+      ];
+      if (path.isNotEmpty) {
+        final snappedTo = path.last;
+        double len = _calculateDistance(from, path.first);
+        for (int k = 0; k < path.length - 1; k++) {
+          len += _calculateDistance(path[k], path[k + 1]);
+        }
+        final straight = _calculateDistance(from, to);
+        // Reject loops / far jumps (wrong road).
+        // Reject loops and WRONG ROADS: GPS is off by ~5-25 m, so a road
+        // point further than 35 m from the real fix is a parallel / side
+        // road (that sent the car into fields next to the highway).
+        final roadStraight = _calculateDistance(from, snappedTo);
+        if (len > math.max(straight, roadStraight) * 1.5 + 30.0 ||
+            _calculateDistance(snappedTo, to) > 35.0) {
+          path = null;
+        }
+      } else {
+        path = null;
+      }
+    }
+
+    if (path != null) {
+      // (The trace keeps the RAW fixes: feeding snapped points back made one
+      // wrong snap stick to the wrong road for every next fix.)
+      for (final p in path) {
+        if (_calculateDistance(_liveWaypoints.last, p) >= 0.6) {
+          _liveWaypoints.add(p);
+        }
+      }
       return;
     }
-    // Car is on this segment now: continue from where it is, on the road.
-    final currentPos = liveMarkerPosition.value ?? from;
-    final ahead = _trimRouteAhead(currentPos, interior);
-    final head = _liveWaypoints.sublist(0, seg);
-    final tail = _liveWaypoints.sublist(seg + 2);
-    _liveWaypoints
-      ..clear()
-      ..addAll([...head, currentPos, ...ahead, snappedTo, ...tail]);
-    _liveWaypointIndex = head.length;
-    _liveWaypointFraction = 0.0;
+
+    // Google could not place it: use the road route to the fix. The route
+    // starts and ends ON the road (its end is the nearest road point to the
+    // fix), so the car still never leaves the road.
+    try {
+      final road = await _directionsService
+          .getRoute(from, to, smooth: false)
+          .timeout(const Duration(seconds: 4));
+      if (_liveDisposed || session != _liveSessionId) return;
+      if (road.length >= 2) {
+        double len = 0;
+        for (int k = 0; k < road.length - 1; k++) {
+          len += _calculateDistance(road[k], road[k + 1]);
+        }
+        final end = road.last;
+        final straight = _calculateDistance(from, to);
+        if (len <= straight * 1.5 + 30.0 &&
+            _calculateDistance(end, to) <= 35.0) {
+          for (final p in road) {
+            if (_calculateDistance(_liveWaypoints.last, p) >= 0.6) {
+              _liveWaypoints.add(p);
+            }
+          }
+          return;
+        }
+      }
+    } catch (_) {}
+    if (_liveDisposed || session != _liveSessionId) return;
+    // Nothing on the road could be found: go to the fix itself.
+    _liveWaypoints.add(to);
+  }
+
+  /// Puts a single point (vehicle shown for the first time / parked) on the
+  /// nearest road (Google Roads nearestRoads). Null when not possible.
+  Future<LatLng?> _nearestRoadPoint(LatLng p) async {
+    final key = ApiConfig.googleMapKey;
+    if (key.isEmpty || !_googleRoadsOk) return null;
+    try {
+      _osrmDio ??= dio_pkg.Dio(
+        dio_pkg.BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 10),
+          validateStatus: (_) => true,
+        ),
+      );
+      final res = await _osrmDio!.get(
+        'https://roads.googleapis.com/v1/nearestRoads',
+        queryParameters: {
+          'points':
+              '${p.latitude.toStringAsFixed(6)},${p.longitude.toStringAsFixed(6)}',
+          'key': key,
+        },
+      );
+      final data = res.data is String
+          ? jsonDecode(res.data as String)
+          : res.data;
+      final sp = data is Map ? (data['snappedPoints'] as List?) : null;
+      if (sp == null || sp.isEmpty || sp.first is! Map) return null;
+      final loc = (sp.first as Map)['location'];
+      if (loc is! Map) return null;
+      final q = LatLng(
+        (loc['latitude'] as num).toDouble(),
+        (loc['longitude'] as num).toDouble(),
+      );
+      return _calculateDistance(p, q) <= 40.0 ? q : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Returns true when [deviceTime] is older than the newest fix already
@@ -4475,6 +4630,10 @@ class VehicleDetailController extends GetxController {
     double speedKmH, {
     double? courseDeg,
   }) {
+    if (_useRoadEngine) {
+      _rtSnapMarkerTo(location, speedKmH, courseDeg: courseDeg);
+      return;
+    }
     _liveWaypoints
       ..clear()
       ..add(location);
@@ -4483,6 +4642,18 @@ class VehicleDetailController extends GetxController {
     _liveTrace
       ..clear()
       ..add(location);
+    // Put this first / jumped position on the road as well.
+    final snapSession = _liveSessionId;
+    _nearestRoadPoint(location).then((q) {
+      if (q == null || _liveDisposed || snapSession != _liveSessionId) return;
+      if (_liveWaypoints.length == 1 &&
+          _calculateDistance(_liveWaypoints.first, location) < 0.5) {
+        _liveWaypoints[0] = q;
+        if (_liveTrace.isNotEmpty) _liveTrace[_liveTrace.length - 1] = q;
+        liveMarkerPosition.value = q;
+        if (isLiveLocked.value) _followLiveCamera(q);
+      }
+    });
     _currentLiveSpeedMs = speedKmH > 0 ? (speedKmH / 3.6) : 0.0;
     _lastReportedSpeedKmh = speedKmH;
     _lastAcceptedGps = location;
@@ -4541,6 +4712,758 @@ class VehicleDetailController extends GetxController {
     return _liveWaypoints.last;
   }
 
+  /// true = mobile-app road engine for the live car (below).
+  static const bool _useRoadEngine = true;
+
+  // =====================================================================
+  // Live road engine (same model as the Airotrack mobile app).
+  // * The car has ONE position (_rtPos). It only moves FORWARD along the
+  //   road polyline (_rtQueue), so it cannot jump sideways or backwards.
+  // * GPS never moves the car directly. Each GPS fix only re-requests the
+  //   road for the recent GPS trace (map matching, up to 24 fixes), and the
+  //   car's position is projected onto that road line.
+  // * When no new road is available the car rolls on the last known road
+  //   only as far as the latest GPS, never across fields.
+  // =====================================================================
+  LatLng? _rtPos;
+  LatLng? _rtTarget;
+  final List<LatLng> _rtQueue = [];
+  final List<LatLng> _rtCorridor = [];
+  final List<LatLng> _rtTrace = [];
+  double _rtGlideMs = 0.0;
+  double _rtLockedBearing = 0.0;
+  double _rtUiHeading = 0.0;
+  bool _rtHasHeading = false;
+  bool _rtMoving = false;
+  double _rtInferredKmh = 0.0;
+  int _rtRequestId = 0;
+  bool _rtFetchInFlight = false;
+  DateTime? _rtLastFetchAt;
+  LatLng? _rtPendingTarget;
+  LatLng? _rtFailedTarget;
+  DateTime? _rtFailCooldownUntil;
+  LatLng? _rtLastMatchedTarget;
+
+  static const double _rtSpeedTau = 0.50;
+  static const double _rtMaxGlideMs = 45.0;
+  static const double _rtMinRollMs = 0.6;
+  static const double _rtStoppedCreepMs = 0.35;
+  static const double _rtStoppedDeadbandM = 6.0;
+  static const double _rtHeadingLookAheadM = 14.0;
+  static const double _rtMaxHeadingDegPerSec = 60.0;
+  static const double _rtWaypointMinM = 2.0;
+  static const double _rtMinRouteM = 8.0;
+  static const double _rtMaxBackwardDeg = 95.0;
+  static const double _rtSnapBackMinLagM = 4.0;
+  static const double _rtReverseStepM = 4.0;
+  static const double _rtMinGpsBearingMoveM = 10.0;
+  static const int _rtTraceMax = 24;
+  static const double _rtMaxGpsToRoadM = 60.0;
+
+  void _rtReset() {
+    _rtPos = null;
+    _rtTarget = null;
+    _rtQueue.clear();
+    _rtCorridor.clear();
+    _rtTrace.clear();
+    _rtGlideMs = 0.0;
+    _rtHasHeading = false;
+    _rtMoving = false;
+    _rtInferredKmh = 0.0;
+    _rtRequestId++;
+    _rtFetchInFlight = false;
+    _rtLastFetchAt = null;
+    _rtPendingTarget = null;
+    _rtFailedTarget = null;
+    _rtFailCooldownUntil = null;
+    _rtLastMatchedTarget = null;
+  }
+
+  // ---------------- GPS intake ----------------
+  void _rtOnDevicePosition(
+    LatLng location,
+    double speedKmH, {
+    String? status,
+    double? courseDeg,
+  }) {
+    final now = DateTime.now();
+    final previousGps = _lastAcceptedGps;
+    final previousGpsTime = _lastGpsTime;
+
+    if (_rtPos == null) {
+      _rtSnapMarkerTo(location, speedKmH, courseDeg: courseDeg);
+      return;
+    }
+    // Very far jump (other trip / long gap): start again from there.
+    if (_calculateDistance(_rtPos!, location) > 3000.0) {
+      _rtSnapMarkerTo(location, speedKmH, courseDeg: courseDeg);
+      return;
+    }
+
+    final inferred = _rtInferSpeedKmh(location, speedKmH, now);
+    _lastReportedSpeedKmh = speedKmH;
+    _rtInferredKmh = inferred;
+
+    if (previousGpsTime != null) {
+      final interval = now.difference(previousGpsTime).inMilliseconds / 1000.0;
+      if (interval >= 0.8 && interval < 120.0) {
+        _expectedPingSec = _expectedPingSec * 0.7 + interval * 0.3;
+      }
+    }
+
+    // Device speed decides moving vs stopped (GPS jitter must not).
+    _rtMoving = speedKmH > 0;
+    isLiveMoving.value = _rtMoving;
+
+    if (!_rtMoving) {
+      final d = previousGps == null
+          ? 0.0
+          : _calculateDistance(previousGps, location);
+      if (previousGps != null && d < _rtStoppedDeadbandM) {
+        _lastGpsTime = now;
+        return;
+      }
+      if (!_rtHasHeading &&
+          courseDeg != null &&
+          courseDeg >= 0 &&
+          courseDeg <= 360) {
+        _rtSetLockedBearing(courseDeg % 360);
+      }
+      _lastAcceptedGps = location;
+      _lastGpsTime = now;
+      _rtTarget = location;
+      _rtRequestRoad(location, force: true);
+      return;
+    }
+
+    if (previousGps != null && _rtIsLikelySnapBack(location, previousGps)) {
+      _lastGpsTime = now;
+      return;
+    }
+
+    _rtUpdateHeadingFromMovement(
+      location,
+      previousGps: previousGps,
+      courseDeg: courseDeg,
+    );
+
+    _lastAcceptedGps = location;
+    _lastGpsTime = now;
+    _rtTarget = location;
+    _rtRequestRoad(location, force: _rtQueue.length < 2);
+  }
+
+  void _rtSnapMarkerTo(LatLng location, double speedKmH, {double? courseDeg}) {
+    _rtQueue.clear();
+    _rtTrace.clear();
+    final placed = _rtCorridor.length >= 2
+        ? _rtClosestForwardPoint(location, _rtCorridor)
+        : location;
+    _rtPos = placed;
+    _rtTarget = location;
+    _lastAcceptedGps = location;
+    _lastGpsTime = DateTime.now();
+    _lastReportedSpeedKmh = speedKmH;
+    _rtInferredKmh = speedKmH;
+    _rtMoving = speedKmH > 0;
+    isLiveMoving.value = _rtMoving;
+    _rtGlideMs = speedKmH > 0
+        ? (speedKmH / 3.6).clamp(0.0, _rtMaxGlideMs).toDouble()
+        : 0.0;
+    if (!_rtHasHeading) {
+      if (courseDeg != null && courseDeg >= 0 && courseDeg <= 360) {
+        _rtSetLockedBearing(courseDeg % 360);
+      } else {
+        final h = _headingFromToday();
+        if (h != null) _rtSetLockedBearing(h);
+      }
+    }
+    _rtTrace.add(location);
+    _rtRequestRoad(location, force: true);
+    _rtPublish(force: true);
+  }
+
+  // ---------------- Frame loop ----------------
+  void _rtGlide(double dt) {
+    final pos = _rtPos;
+    if (pos == null || _rtTarget == null) return;
+
+    if (_rtMoving) {
+      final remaining = _rtRemainingMeters(pos);
+      final target = _rtTargetSpeedMs(remaining);
+      final alpha = 1.0 - math.exp(-dt / _rtSpeedTau);
+      _rtGlideMs += (target - _rtGlideMs) * alpha;
+      if (_rtGlideMs < _rtMinRollMs && remaining > 1.0) {
+        _rtGlideMs = _rtMinRollMs;
+      }
+      if (_rtGlideMs < 0) _rtGlideMs = 0;
+
+      var step = _rtGlideMs * dt;
+      if (step > remaining) step = remaining;
+      if (step > 0.0005) {
+        if (_rtQueue.isNotEmpty) {
+          _rtAdvance(step);
+        } else if (_rtCorridor.length >= 2) {
+          _rtContinueAlongKnownRoad(step);
+        }
+      }
+      _rtMaybePrefetch(remaining);
+    } else {
+      _rtCreepWhileStopped(dt);
+    }
+
+    _rtUpdateHeading(dt);
+    _rtPublish();
+  }
+
+  /// Speed needed to use up the road buffer by the time the next fix is
+  /// due (a little later, so it is still rolling when it arrives), kept
+  /// near the speed the device reports.
+  double _rtTargetSpeedMs(double remaining) {
+    final reported = math.max(_lastReportedSpeedKmh, _rtInferredKmh) / 3.6;
+    final horizon = (_expectedPingSec * 1.3).clamp(1.5, 60.0);
+    var v = remaining / horizon;
+    if (reported > 0.4) {
+      v = v.clamp(reported * 0.3, reported * 1.8);
+    } else {
+      v = v.clamp(0.0, 14.0);
+    }
+    if (remaining < 2.0) {
+      v = math.min(v, math.max(remaining * 1.2, _rtMinRollMs));
+    }
+    return v.clamp(0.0, _rtMaxGlideMs).toDouble();
+  }
+
+  void _rtAdvance(double step) {
+    var pos = _rtPos!;
+    var remaining = step;
+    while (remaining > 0.001 && _rtQueue.isNotEmpty) {
+      final next = _rtQueue.first;
+      final dist = _calculateDistance(pos, next);
+      if (dist < 0.05) {
+        _rtQueue.removeAt(0);
+        continue;
+      }
+      if (dist <= remaining) {
+        pos = next;
+        remaining -= dist;
+        _rtQueue.removeAt(0);
+      } else {
+        final f = remaining / dist;
+        pos = LatLng(
+          pos.latitude + (next.latitude - pos.latitude) * f,
+          pos.longitude + (next.longitude - pos.longitude) * f,
+        );
+        remaining = 0;
+      }
+    }
+    _rtPos = pos;
+  }
+
+  void _rtContinueAlongKnownRoad(double step) {
+    final target = _rtTarget;
+    if (_rtCorridor.length < 2 || target == null) return;
+    final gpsOnRoad = _rtClosestPointOnPolyline(target, _rtCorridor);
+    if (_calculateDistance(target, gpsOnRoad) > _rtMaxGpsToRoadM) return;
+    final onNow = _rtClosestPointOnPolyline(_rtPos!, _rtCorridor);
+    if (_calculateDistance(_rtPos!, onNow) > 2.0) _rtPos = onNow;
+    final ahead = _rtTrimAhead(_rtPos!, _rtCorridor);
+    final limited = _rtTrimToUpdate(ahead, gpsOnRoad);
+    if (limited.length < 2) return;
+    _rtQueue
+      ..clear()
+      ..addAll(limited);
+    _rtAdvance(step);
+  }
+
+  void _rtCreepWhileStopped(double dt) {
+    _rtGlideMs = 0.0;
+    if (_rtQueue.isEmpty) return;
+    final remaining = _rtRemainingMeters(_rtPos!);
+    if (remaining <= 1.5) return;
+    _rtAdvance(math.min(_rtStoppedCreepMs * dt, remaining));
+  }
+
+  void _rtMaybePrefetch(double remaining) {
+    final t = _rtTarget;
+    if (t == null) return;
+    final threshold = math.max(80.0, _rtGlideMs * _expectedPingSec);
+    if (remaining >= threshold && _rtQueue.length >= 2) return;
+    // Same fix already matched: nothing new to ask for.
+    final last = _rtLastMatchedTarget;
+    if (last != null &&
+        _calculateDistance(last, t) < 1.0 &&
+        _rtQueue.length >= 2) {
+      return;
+    }
+    _rtRequestRoad(t, force: _rtQueue.length < 2);
+  }
+
+  // ---------------- Heading ----------------
+  void _rtUpdateHeading(double dt) {
+    if (_rtQueue.isNotEmpty) {
+      final ahead = _rtBearingLookAhead(_rtPos!, _rtHeadingLookAheadM);
+      if (ahead != null) {
+        if (!_rtHasHeading) {
+          _rtSetLockedBearing(ahead);
+        } else {
+          _rtLockedBearing = ahead;
+        }
+      }
+    }
+    if (!_rtHasHeading) return;
+    final delta = _rtBearingDelta(_rtUiHeading, _rtLockedBearing);
+    final maxStep = _rtMaxHeadingDegPerSec * dt;
+    final step = delta.clamp(-maxStep, maxStep).toDouble();
+    if (step.abs() < 0.02) return;
+    _rtUiHeading = (_rtUiHeading + step) % 360;
+    if (_rtUiHeading < 0) _rtUiHeading += 360;
+    liveMarkerBearing.value = _rtUiHeading;
+  }
+
+  double? _rtBearingLookAhead(LatLng from, double meters) {
+    if (_rtQueue.isEmpty) return null;
+    var traveled = 0.0;
+    var prev = from;
+    LatLng? pick;
+    for (final p in _rtQueue) {
+      traveled += _calculateDistance(prev, p);
+      prev = p;
+      pick = p;
+      if (traveled >= meters) break;
+    }
+    if (pick == null || _calculateDistance(from, pick) < 1.5) return null;
+    return _getBearing(from, pick);
+  }
+
+  void _rtSetLockedBearing(double bearing) {
+    bearing = bearing % 360;
+    if (bearing < 0) bearing += 360;
+    if (!_rtHasHeading) {
+      _rtLockedBearing = bearing;
+      _rtUiHeading = bearing;
+      liveMarkerBearing.value = bearing;
+      _rtHasHeading = true;
+      return;
+    }
+    _rtLockedBearing = bearing;
+  }
+
+  void _rtUpdateHeadingFromMovement(
+    LatLng location, {
+    LatLng? previousGps,
+    double? courseDeg,
+  }) {
+    if (_rtQueue.length >= 2 && _rtHasHeading) return;
+    double? movementBearing;
+    var movedM = 0.0;
+    if (previousGps != null) {
+      movedM = _calculateDistance(previousGps, location);
+      if (movedM >= _rtMinGpsBearingMoveM) {
+        movementBearing = _getBearing(previousGps, location);
+      }
+    }
+    if (movementBearing == null && _rtPos != null) {
+      movedM = _calculateDistance(_rtPos!, location);
+      if (movedM >= _rtMinGpsBearingMoveM * 1.5) {
+        movementBearing = _getBearing(_rtPos!, location);
+      }
+    }
+    if (movementBearing != null) {
+      if (_rtHasHeading) {
+        final flip = _rtBearingDelta(_rtLockedBearing, movementBearing).abs();
+        if (flip > 55.0 && movedM < 25.0) return;
+      }
+      _rtSetLockedBearing(movementBearing);
+      return;
+    }
+    if (!_rtHasHeading &&
+        courseDeg != null &&
+        courseDeg >= 0 &&
+        courseDeg <= 360) {
+      _rtSetLockedBearing(courseDeg % 360);
+    }
+  }
+
+  // ---------------- Publish: marker + camera in the same tick ----------
+  void _rtPublish({bool force = false}) {
+    final p = _rtPos;
+    if (p == null) return;
+    liveMarkerPosition.value = p;
+    if (isLiveLocked.value) _followLiveCamera(p);
+  }
+
+  // ---------------- Road (map matching on the GPS trace) ----------------
+  void _rtRequestRoad(LatLng to, {bool force = false}) {
+    _rtPushTrace(to);
+    _rtPendingTarget = to;
+    final pos = _rtPos;
+    if (pos == null) return;
+    if (!_rtCanRequest(to, force: force)) return;
+
+    final straightM = _calculateDistance(pos, to);
+    final queueEmpty = _rtQueue.length < 2;
+    if (straightM < _rtMinRouteM && !queueEmpty) return;
+    if (!queueEmpty && straightM < 15.0 && _rtRemainingMeters(pos) > 20.0) {
+      return;
+    }
+    if (_rtHasHeading && _rtIsBehind(pos, to) && straightM < 50.0) return;
+
+    _rtLastFetchAt = DateTime.now();
+    _rtFetchInFlight = true;
+    final requestId = ++_rtRequestId;
+    final session = _liveSessionId;
+    final toPt = to;
+    final trace = <LatLng>[..._rtTrace];
+
+    () async {
+      try {
+        List<LatLng> road = const [];
+        if (trace.length >= 2) {
+          road = await _directionsService
+              .matchTrace(trace, radiusMeters: 50)
+              .timeout(const Duration(seconds: 8));
+          // DirectionsService returns the raw trace itself when no road
+          // match was possible: that is NOT a road.
+          if (_rtSameAsTrace(road, trace)) road = const [];
+        } else {
+          // Single fix (first position): road route from it to itself is
+          // not possible; ask the nearest road point instead.
+          final q = await _nearestRoadPoint(toPt);
+          if (q != null) road = [q, q];
+        }
+        if (trace.length >= 2 && !_rtRoadFollowsGps(road, trace)) {
+          road = const [];
+        }
+        if (_liveDisposed || session != _liveSessionId) return;
+        if (requestId != _rtRequestId && _rtQueue.length >= 2) return;
+        if (road.length < 2) {
+          _rtFailedTarget = toPt;
+          _rtFailCooldownUntil = DateTime.now().add(const Duration(seconds: 3));
+          return;
+        }
+        if (trace.length < 2) {
+          // First position: put the car on the nearest road point.
+          if (_rtQueue.isEmpty &&
+              _rtPos != null &&
+              _calculateDistance(_rtPos!, road.first) <= 40.0) {
+            _rtPos = road.first;
+            _rtPublish(force: true);
+          }
+          return;
+        }
+        _rtFailedTarget = null;
+        _rtFailCooldownUntil = null;
+        _rtLastMatchedTarget = toPt;
+        _rtCorridor
+          ..clear()
+          ..addAll(road);
+
+        var prepared = _rtOrientWithTravel(road);
+        prepared = _rtDecimate(prepared, _rtWaypointMinM);
+        final trimmed = _rtTrimToUpdate(prepared, toPt);
+        if (trimmed.length >= 2) prepared = trimmed;
+        if (prepared.length < 2) return;
+        _rtAdopt(prepared);
+      } catch (e) {
+        debugPrint('[LiveTrack] road match failed: $e');
+        _rtFailedTarget = toPt;
+        _rtFailCooldownUntil = DateTime.now().add(const Duration(seconds: 3));
+      } finally {
+        _rtFetchInFlight = false;
+        final pending = _rtPendingTarget;
+        if (!_liveDisposed &&
+            session == _liveSessionId &&
+            pending != null &&
+            _calculateDistance(pending, toPt) > 25.0) {
+          _rtRequestRoad(pending, force: _rtQueue.length < 2);
+        }
+      }
+    }();
+  }
+
+  bool _rtSameAsTrace(List<LatLng> road, List<LatLng> trace) {
+    if (road.length != trace.length) return false;
+    for (int i = 0; i < road.length; i++) {
+      if (_calculateDistance(road[i], trace[i]) > 0.01) return false;
+    }
+    return true;
+  }
+
+  /// Car's current point projected onto the new road; only the road AHEAD
+  /// of it is walked (never a shortcut back towards raw GPS).
+  void _rtAdopt(List<LatLng> path) {
+    if (path.length < 2 || _rtPos == null) return;
+    final published = _rtPos!;
+    final onNew = _rtClosestForwardPoint(published, path);
+    final ahead = _rtTrimAhead(onNew, path);
+    if (ahead.length < 2) return;
+    if (_rtQueue.length >= 2) {
+      final remainingNow = _rtRemainingMeters(published);
+      final newRemaining = _rtPathLength(ahead);
+      if (remainingNow > 20.0 &&
+          newRemaining + 1.0 < remainingNow &&
+          _calculateDistance(published, onNew) < 3.0) {
+        return;
+      }
+    }
+    _rtQueue
+      ..clear()
+      ..addAll(ahead);
+    _rtPos = onNew;
+  }
+
+  bool _rtCanRequest(LatLng to, {required bool force}) {
+    if (_rtFetchInFlight) return false;
+    final now = DateTime.now();
+    final failed = _rtFailedTarget;
+    final cooldown = _rtFailCooldownUntil;
+    if (failed != null &&
+        cooldown != null &&
+        now.isBefore(cooldown) &&
+        _calculateDistance(failed, to) < 25.0) {
+      return false;
+    }
+    final last = _rtLastFetchAt;
+    if (last != null) {
+      final minGapMs = force ? 800 : 1200;
+      if (now.difference(last).inMilliseconds < minGapMs) return false;
+    }
+    return true;
+  }
+
+  bool _rtRoadFollowsGps(List<LatLng> road, List<LatLng> gps) {
+    if (road.length < 2 || gps.isEmpty) return false;
+    final recent = gps.length > 4 ? gps.sublist(gps.length - 4) : gps;
+    for (final p in recent) {
+      final on = _rtClosestPointOnPolyline(p, road);
+      if (_calculateDistance(p, on) > _rtMaxGpsToRoadM) return false;
+    }
+    final traceLen = _rtPathLength(gps);
+    final routeLen = _rtPathLength(road);
+    if (traceLen > 40.0 && routeLen > traceLen * 4.0) return false;
+    return true;
+  }
+
+  void _rtPushTrace(LatLng p) {
+    if (_rtTrace.isNotEmpty && _calculateDistance(_rtTrace.last, p) < 1.5) {
+      _rtTrace[_rtTrace.length - 1] = p;
+      return;
+    }
+    _rtTrace.add(p);
+    while (_rtTrace.length > _rtTraceMax) {
+      _rtTrace.removeAt(0);
+    }
+  }
+
+  List<LatLng> _rtOrientWithTravel(List<LatLng> path) {
+    if (path.length < 2) return path;
+    final pathBearing = _rtPathBearingOver(path, 30.0);
+    if (pathBearing == null) return path;
+    double? travel;
+    if (_rtTrace.length >= 2) {
+      final prev = _rtTrace[_rtTrace.length - 2];
+      final curr = _rtTrace.last;
+      if (_calculateDistance(prev, curr) >= 5.0)
+        travel = _getBearing(prev, curr);
+    }
+    travel ??= _rtHasHeading ? _rtLockedBearing : null;
+    if (travel == null) return path;
+    final vsTravel = _rtBearingDelta(travel, pathBearing).abs();
+    if (vsTravel <= 100.0) return path;
+    final reversed = path.reversed.toList();
+    final rev = _rtPathBearingOver(reversed, 30.0);
+    if (rev == null) return path;
+    final vsRev = _rtBearingDelta(travel, rev).abs();
+    return (vsRev + 25.0 < vsTravel) ? reversed : path;
+  }
+
+  double? _rtPathBearingOver(List<LatLng> path, double meters) {
+    if (path.length < 2) return null;
+    var traveled = 0.0;
+    var i = 1;
+    while (i < path.length && traveled < meters) {
+      traveled += _calculateDistance(path[i - 1], path[i]);
+      i++;
+    }
+    final end = path[math.min(i - 1, path.length - 1)];
+    if (_calculateDistance(path.first, end) < 2.0) {
+      return _getBearing(path[path.length - 2], path.last);
+    }
+    return _getBearing(path.first, end);
+  }
+
+  List<LatLng> _rtDecimate(List<LatLng> path, double minMeters) {
+    if (path.length <= 2) return path;
+    final out = <LatLng>[path.first];
+    for (var i = 1; i < path.length - 1; i++) {
+      if (_calculateDistance(out.last, path[i]) >= minMeters) out.add(path[i]);
+    }
+    if (_calculateDistance(out.last, path.last) >= 1.0 || out.length < 2) {
+      out.add(path.last);
+    } else {
+      out[out.length - 1] = path.last;
+    }
+    return out;
+  }
+
+  List<LatLng> _rtTrimToUpdate(List<LatLng> path, LatLng update) {
+    if (path.length < 2) return path;
+    final hit = _rtClosestSegment(update, path);
+    final out = <LatLng>[];
+    for (var i = 0; i <= hit.index; i++) {
+      out.add(path[i]);
+    }
+    if (out.isEmpty || _calculateDistance(out.last, hit.point) >= 0.5) {
+      out.add(hit.point);
+    } else {
+      out[out.length - 1] = hit.point;
+    }
+    return out.length >= 2 ? out : path;
+  }
+
+  List<LatLng> _rtTrimAhead(LatLng from, List<LatLng> route) {
+    if (route.length < 2) return route;
+    final hit = _rtClosestSegment(from, route);
+    final out = <LatLng>[hit.point];
+    for (var i = hit.index + 1; i < route.length; i++) {
+      if (_calculateDistance(out.last, route[i]) >= 0.4) out.add(route[i]);
+    }
+    return out;
+  }
+
+  double _rtPathLength(List<LatLng> path) {
+    var total = 0.0;
+    for (var i = 1; i < path.length; i++) {
+      total += _calculateDistance(path[i - 1], path[i]);
+    }
+    return total;
+  }
+
+  double _rtRemainingMeters(LatLng current) {
+    if (_rtQueue.isEmpty) {
+      final t = _rtTarget;
+      if (_rtCorridor.length < 2 || t == null) return 0.0;
+      final gpsOnRoad = _rtClosestPointOnPolyline(t, _rtCorridor);
+      if (_calculateDistance(t, gpsOnRoad) > _rtMaxGpsToRoadM) return 0.0;
+      final ahead = _rtTrimAhead(current, _rtCorridor);
+      return _rtPathLength(_rtTrimToUpdate(ahead, gpsOnRoad));
+    }
+    var total = _calculateDistance(current, _rtQueue.first);
+    for (var i = 1; i < _rtQueue.length; i++) {
+      total += _calculateDistance(_rtQueue[i - 1], _rtQueue[i]);
+    }
+    return total;
+  }
+
+  LatLng _rtClosestPointOnPolyline(LatLng p, List<LatLng> poly) {
+    if (poly.isEmpty) return p;
+    if (poly.length == 1) return poly.first;
+    return _rtClosestSegment(p, poly).point;
+  }
+
+  LatLng _rtClosestForwardPoint(LatLng p, List<LatLng> poly) {
+    if (poly.length < 2) return poly.isEmpty ? p : poly.first;
+    final hits = <({int index, LatLng point, double distance})>[];
+    var bestD = double.infinity;
+    for (var i = 0; i < poly.length - 1; i++) {
+      final projected = _rtProject(p, poly[i], poly[i + 1]);
+      final d = _calculateDistance(p, projected);
+      hits.add((index: i, point: projected, distance: d));
+      if (d < bestD) bestD = d;
+    }
+    var pick = hits.first;
+    var bestScore = double.infinity;
+    for (final hit in hits) {
+      if (hit.distance > bestD + 12.0) continue;
+      var score = hit.distance;
+      final a = poly[hit.index];
+      final b = poly[hit.index + 1];
+      if (_rtHasHeading && _calculateDistance(a, b) > 1.0) {
+        final turn = _rtBearingDelta(_rtLockedBearing, _getBearing(a, b)).abs();
+        if (turn > 80) score += 40;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        pick = hit;
+      }
+    }
+    return pick.point;
+  }
+
+  ({int index, LatLng point, double distance}) _rtClosestSegment(
+    LatLng p,
+    List<LatLng> poly,
+  ) {
+    var bestIndex = 0;
+    var best = poly.first;
+    var bestDist = double.infinity;
+    for (var i = 0; i < poly.length - 1; i++) {
+      final projected = _rtProject(p, poly[i], poly[i + 1]);
+      final d = _calculateDistance(p, projected);
+      if (d < bestDist) {
+        bestDist = d;
+        best = projected;
+        bestIndex = i;
+      }
+    }
+    return (index: bestIndex, point: best, distance: bestDist);
+  }
+
+  LatLng _rtProject(LatLng p, LatLng a, LatLng b) {
+    final dx = b.longitude - a.longitude;
+    final dy = b.latitude - a.latitude;
+    if (dx == 0 && dy == 0) return a;
+    final t =
+        (((p.longitude - a.longitude) * dx + (p.latitude - a.latitude) * dy) /
+                (dx * dx + dy * dy))
+            .clamp(0.0, 1.0);
+    return LatLng(a.latitude + dy * t, a.longitude + dx * t);
+  }
+
+  bool _rtIsForwardOf(LatLng point, LatLng origin) {
+    if (!_rtHasHeading) return true;
+    return _rtBearingDelta(
+          _rtLockedBearing,
+          _getBearing(origin, point),
+        ).abs() <=
+        _rtMaxBackwardDeg;
+  }
+
+  bool _rtIsBehind(LatLng current, LatLng point) {
+    if (!_rtHasHeading) return false;
+    return _rtBearingDelta(
+          _rtLockedBearing,
+          _getBearing(current, point),
+        ).abs() >
+        _rtMaxBackwardDeg;
+  }
+
+  bool _rtIsLikelySnapBack(LatLng location, LatLng previousGps) {
+    final animated = _rtPos;
+    if (!_rtHasHeading || animated == null) return false;
+    if (!_rtIsBehind(animated, location)) return false;
+    final lagM = _calculateDistance(animated, location);
+    if (lagM < _rtSnapBackMinLagM) return false;
+    final gpsStepM = _calculateDistance(previousGps, location);
+    if (gpsStepM < 1.0) return true;
+    final gpsMovingBackward =
+        !_rtIsForwardOf(location, previousGps) && gpsStepM >= _rtReverseStepM;
+    return !gpsMovingBackward;
+  }
+
+  double _rtBearingDelta(double from, double to) =>
+      ((to - from + 540) % 360) - 180;
+
+  double _rtInferSpeedKmh(LatLng location, double reportedKmh, DateTime now) {
+    if (_lastAcceptedGps == null || _lastGpsTime == null) return reportedKmh;
+    final deltaM = _calculateDistance(_lastAcceptedGps!, location);
+    if (deltaM < 1.0) return reportedKmh;
+    final seconds = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
+    if (seconds <= 0) return reportedKmh;
+    return math.max(reportedKmh, (deltaM / seconds) * 3.6);
+  }
+
   void _startLiveAnimationLoop() {
     _stopLiveAnimationLoop();
     _lastLiveTickTime = DateTime.now();
@@ -4563,6 +5486,10 @@ class VehicleDetailController extends GetxController {
   }
 
   void _advanceLiveFrame(double dt) {
+    if (_useRoadEngine) {
+      _rtGlide(dt);
+      return;
+    }
     if (_liveWaypoints.isEmpty) return;
 
     if (_liveWaypoints.length == 1) {
@@ -4605,17 +5532,24 @@ class VehicleDetailController extends GetxController {
     final sinceFix = _lastGpsTime == null
         ? 0.0
         : DateTime.now().difference(_lastGpsTime!).inMilliseconds / 1000.0;
-    final horizon = (_expectedPingSec * 1.15).clamp(1.5, 90.0);
+    // The car is planned to reach the newest point only AFTER the next one
+    // is due (1.6 x the usual gap), so normally the next point arrives while
+    // it is still moving. If the next point is late, it keeps slowing down
+    // smoothly (never a sudden stop) and speeds up again when it arrives.
+    final ping = _expectedPingSec.clamp(2.0, 90.0);
+    final horizon = ping * 1.6;
     final timeLeft = horizon - sinceFix;
+    final creepTau = (ping * 0.6).clamp(4.0, 40.0);
 
     double targetMps;
     if (!isLiveMoving.value && _lastReportedSpeedKmh <= 0) {
       // Parked: settle on the point.
       targetMps = math.max(1.0, remainingMeters / 1.5);
-    } else if (timeLeft > 0.5) {
+    } else if (timeLeft > creepTau) {
       targetMps = remainingMeters / timeLeft;
     } else {
-      targetMps = remainingMeters / 3.0; // next point late: creep slowly
+      // Late point: slow creep (remaining distance shrinks gradually).
+      targetMps = remainingMeters / creepTau;
     }
     targetMps = targetMps.clamp(0.0, 45.0);
 
@@ -4872,18 +5806,47 @@ class VehicleDetailController extends GetxController {
     }
   }
 
-  void zoomInLiveMap() {
+  void zoomInLiveMap() => _zoomLive(1.0);
+
+  void zoomOutLiveMap() => _zoomLive(-1.0);
+
+  /// + / - buttons: zoom around the car while following it (so it never
+  /// leaves the screen), around the map centre otherwise.
+  void _zoomLive(double step) {
     try {
       final cam = liveMapController.camera;
-      liveMapController.move(cam.center, (cam.zoom + 1.0).clamp(3.0, 19.0));
+      final car = liveMarkerPosition.value;
+      final center = (isLiveLocked.value && car != null) ? car : cam.center;
+      liveMapController.move(center, (cam.zoom + step).clamp(3.0, 19.0));
     } catch (_) {}
   }
 
-  void zoomOutLiveMap() {
-    try {
-      final cam = liveMapController.camera;
-      liveMapController.move(cam.center, (cam.zoom - 1.0).clamp(3.0, 19.0));
-    } catch (_) {}
+  double? _lastLiveCamZoom;
+
+  /// Map moved. A finger DRAG (pan) stops following the vehicle; a PINCH /
+  /// double-tap ZOOM keeps following it (zooming on the phone used to stop
+  /// following, so the car drove off the screen).
+  // `camera` is MapPosition (flutter_map 6) or MapCamera (7+); both have zoom.
+  void onLiveCameraChanged(dynamic camera, bool hasGesture) {
+    final prevZoom = _lastLiveCamZoom;
+    final zoom = (camera.zoom as num?)?.toDouble();
+    if (zoom != null) _lastLiveCamZoom = zoom;
+    if (!hasGesture || !isLiveLocked.value) return;
+    final zooming =
+        prevZoom != null && zoom != null && (zoom - prevZoom).abs() > 0.001;
+    if (zooming) {
+      // Keep the car in the centre while zooming.
+      final car = liveMarkerPosition.value;
+      if (car != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          try {
+            liveMapController.move(car, liveMapController.camera.zoom);
+          } catch (_) {}
+        });
+      }
+      return;
+    }
+    isLiveLocked.value = false; // panned away by hand
   }
 
   void stopLiveTracking() {

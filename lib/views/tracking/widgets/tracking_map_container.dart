@@ -100,9 +100,7 @@ class TrackingMapContainer extends StatelessWidget {
                       : const LatLng(10.038, 76.325),
                   initialZoom: 16.0,
                   onPositionChanged: (camera, hasGesture) {
-                    if (hasGesture) {
-                      controller.isLiveLocked.value = false;
-                    }
+                    controller.onLiveCameraChanged(camera, hasGesture);
                   },
                   onTap: (tapPosition, point) {
                     controller.toggleMapDialog();
