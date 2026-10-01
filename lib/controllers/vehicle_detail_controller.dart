@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:airotrack_web/constants/app_strings.dart';
+import 'package:airotrack_web/services/app_settings.dart';
 import 'package:dio/dio.dart' as dio_pkg;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -362,23 +364,17 @@ class VehicleDetailController extends GetxController {
 
   /// Tap on the history map: show time + address of the nearest route
   /// point. Tapping away from the route closes the dialog.
+  /// Tap on the history map. Only a tap ON the drawn route line opens the
+  /// dialog (time, duration, address of that exact spot); a tap anywhere
+  /// else just closes it.
   void onHistoryMapTap(LatLng tapped) {
-    if (historyPoints.isEmpty) {
-      toggleHistoryMapDialog();
+    final route = getActiveRoutePoints();
+    final srcIdx = _activeRouteSourceIndex();
+    if (route.length < 2 || srcIdx.length != route.length) {
+      hideHistoryMapDialog();
       return;
     }
-    int best = -1;
-    double bestM = double.infinity;
-    for (int i = 0; i < historyPoints.length; i++) {
-      final ll = _pointLatLng(historyPoints[i]);
-      if (ll == null) continue;
-      final d = _distanceMeters(ll, tapped);
-      if (d < bestM) {
-        bestM = d;
-        best = i;
-      }
-    }
-    // Accept taps within ~40 px of a route point at the current zoom.
+    // Metres per screen pixel at the tap.
     double zoom = 14;
     try {
       zoom = historyMapController.camera.zoom;
@@ -387,17 +383,135 @@ class VehicleDetailController extends GetxController {
         156543.03392 *
         math.cos(tapped.latitude * math.pi / 180) /
         math.pow(2, zoom);
-    if (best < 0 || bestM > mPerPx * 40) {
+    final maxM = mPerPx * 16; // finger must be within ~16 px of the line
+
+    // Nearest point on the line (projection onto each segment).
+    final cosLat = math.cos(tapped.latitude * math.pi / 180);
+    const mPerDeg = 111320.0;
+    double bestD = double.infinity;
+    int bestSeg = -1;
+    double bestT = 0;
+    LatLng? bestPt;
+    for (int i = 0; i < route.length - 1; i++) {
+      final a = route[i], b = route[i + 1];
+      final ax = (a.longitude - tapped.longitude) * mPerDeg * cosLat;
+      final ay = (a.latitude - tapped.latitude) * mPerDeg;
+      final bx = (b.longitude - tapped.longitude) * mPerDeg * cosLat;
+      final by = (b.latitude - tapped.latitude) * mPerDeg;
+      final dx = bx - ax, dy = by - ay;
+      final len2 = dx * dx + dy * dy;
+      double t = len2 > 0 ? -(ax * dx + ay * dy) / len2 : 0;
+      t = t.clamp(0.0, 1.0);
+      final px = ax + dx * t, py = ay + dy * t;
+      final d = math.sqrt(px * px + py * py);
+      if (d < bestD) {
+        bestD = d;
+        bestSeg = i;
+        bestT = t;
+        bestPt = LatLng(
+          a.latitude + (b.latitude - a.latitude) * t,
+          a.longitude + (b.longitude - a.longitude) * t,
+        );
+      }
+    }
+    if (bestSeg < 0 || bestD > maxM || bestPt == null) {
       hideHistoryMapDialog();
       return;
     }
-    _tappedStopDuration = null;
-    historyTapIndex.value = best;
-    historyTapPoint.value = _pointLatLng(historyPoints[best]);
+    final idx = bestT < 0.5 ? srcIdx[bestSeg] : srcIdx[bestSeg + 1];
+    _showHistoryPointDialog(idx, bestPt);
+  }
+
+  /// Opens the dialog for history point [idx] with the pin at [at].
+  void _showHistoryPointDialog(int idx, LatLng at) {
+    if (idx < 0 || idx >= historyPoints.length) return;
+    _tappedStopDuration = _durationAtPoint(idx);
+    historyTapIndex.value = idx;
+    historyTapPoint.value = at;
     isHistoryMapDialogVisible.value = true;
   }
 
-  /// Tap on the playback car: show the car's current point.
+  /// Duration for a picked point: if the vehicle was parked there, how long
+  /// it was parked; otherwise how long it had been travelling since the
+  /// start of the selected period.
+  String _durationAtPoint(int idx) {
+    for (final st in historyStops) {
+      final si = st['index'] as int;
+      final s0 = st['start'] as DateTime;
+      final s1 = st['end'] as DateTime;
+      final t = _parseTimestamp(_pointTime(historyPoints[idx]));
+      if (si == idx || (t != null && !t.isBefore(s0) && !t.isAfter(s1))) {
+        return 'Parked ${_formatDuration(Duration(seconds: st['seconds'] as int))}';
+      }
+    }
+    final t0 = _parseTimestamp(_pointTime(historyPoints.first));
+    final t = _parseTimestamp(_pointTime(historyPoints[idx]));
+    if (t0 == null || t == null) return '-';
+    return _formatDuration(t.difference(t0));
+  }
+
+  /// Date the history period starts on (for the time picker).
+  DateTime? get historyFirstTime => historyPoints.isEmpty
+      ? null
+      : _parseTimestamp(_pointTime(historyPoints.first));
+  DateTime? get historyLastTime => historyPoints.isEmpty
+      ? null
+      : _parseTimestamp(_pointTime(historyPoints.last));
+
+  /// Shows where the vehicle was at [when]: pin + dialog (time, duration,
+  /// address) on that spot of the route, map moved there, and the playback
+  /// car placed there so Play continues from that moment.
+  void showHistoryAtTime(DateTime when) {
+    if (historyPoints.isEmpty) {
+      AppToast.show('No history loaded for this period');
+      return;
+    }
+    final first = historyFirstTime, last = historyLastTime;
+    if (first != null &&
+        last != null &&
+        (when.isBefore(first.subtract(const Duration(minutes: 1))) ||
+            when.isAfter(last.add(const Duration(minutes: 1))))) {
+      AppToast.show('No data at that time in the selected period');
+      return;
+    }
+    // History point closest in time.
+    int best = -1;
+    int bestDiff = 1 << 62;
+    for (int i = 0; i < historyPoints.length; i++) {
+      final t = _parseTimestamp(_pointTime(historyPoints[i]));
+      if (t == null || _pointLatLng(historyPoints[i]) == null) continue;
+      final diff = t.difference(when).inSeconds.abs();
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+    if (best < 0) {
+      AppToast.show('No location found for that time');
+      return;
+    }
+    // Same spot on the drawn (road) line.
+    final route = getActiveRoutePoints();
+    final srcIdx = _activeRouteSourceIndex();
+    int vertex = -1;
+    if (srcIdx.length == route.length) {
+      vertex = srcIdx.indexWhere((s) => s >= best);
+    }
+    final at = vertex >= 0 ? route[vertex] : _pointLatLng(historyPoints[best])!;
+
+    // Car to that moment (paused), then pin + dialog.
+    if (vertex >= 0 && route.length >= 2) {
+      final cum = _cumulativeKm(route);
+      if (cum.isNotEmpty && cum.last > 0)
+        seekToProgress(cum[vertex] / cum.last);
+    }
+    _showHistoryPointDialog(best, at);
+    try {
+      final z = historyMapController.camera.zoom;
+      historyMapController.move(at, z < 15 ? 16 : z);
+    } catch (_) {}
+  }
+
   void onHistoryCarTap() {
     historyTapIndex.value = -1;
     historyTapPoint.value = null;
@@ -572,6 +686,23 @@ class VehicleDetailController extends GetxController {
     _startLiveAnimationLoop();
     _bindToHomeController();
     placeMovingMarkerAtStart();
+    // Profile > General Settings > Show History on Live: today's route is
+    // drawn on the live map while the switch is ON.
+    final settings = AppSettings.to;
+    settings.ready.then(
+      (_) => _applyHistoryOnLive(settings.showHistoryOnLive.value),
+    );
+    ever<bool>(settings.showHistoryOnLive, _applyHistoryOnLive);
+  }
+
+  void _applyHistoryOnLive(bool on) {
+    // Quietly (no toast): the route fills in when today's points arrive.
+    showLiveRoute.value = on;
+    if (on) {
+      _rebuildLiveOverlays();
+    } else {
+      liveTodayRoute.clear();
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -2361,12 +2492,23 @@ class VehicleDetailController extends GetxController {
     }
   }
 
+  // The tap on the dialog's X can also reach the map underneath (web),
+  // whose tap toggled the dialog straight back open. Taps on the map right
+  // after closing are ignored.
+  DateTime _mapDialogClosedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
   void toggleMapDialog() {
+    if (!isMapDialogVisible.value &&
+        DateTime.now().difference(_mapDialogClosedAt).inMilliseconds < 400) {
+      return;
+    }
     isMapDialogVisible.value = !isMapDialogVisible.value;
+    if (!isMapDialogVisible.value) _mapDialogClosedAt = DateTime.now();
   }
 
   void hideMapDialog() {
     isMapDialogVisible.value = false;
+    _mapDialogClosedAt = DateTime.now();
   }
 
   void showMapDialog() {
@@ -3478,6 +3620,7 @@ class VehicleDetailController extends GetxController {
       _lastLiveFixTime = null;
       _lastAcceptedDeviceTime = null;
       _liveHeadingKnown = false;
+      _liveTrace.clear();
     }
 
     try {
@@ -4185,8 +4328,92 @@ class VehicleDetailController extends GetxController {
 
     if (dist >= 0.5) {
       _liveWaypoints.add(location);
-      _requestRoadPath(anchor, location);
+      _requestSnappedPath(anchor, location);
     }
+  }
+
+  // Last raw GPS fixes, used to put the newest one on the right road.
+  final List<LatLng> _liveTrace = [];
+
+  /// Puts the newest fix ON the road and follows the road to it, using
+  /// Google Roads (same as History, same roads as the Google map). Several
+  /// recent fixes are sent together so Google knows the driving direction
+  /// and picks the correct side of a divided road. Falls back to the old
+  /// road route between the two fixes when Google does not answer.
+  Future<void> _requestSnappedPath(LatLng from, LatLng to) async {
+    _liveTrace.add(to);
+    if (_liveTrace.length > 6) _liveTrace.removeAt(0);
+    final trace = List<LatLng>.from(_liveTrace);
+    final session = _liveSessionId;
+    if (trace.length < 2) {
+      _requestRoadPath(from, to);
+      return;
+    }
+    final res = await _googleSnap(
+      trace,
+      List<int>.generate(trace.length, (i) => i),
+    );
+    if (_liveDisposed || session != _liveSessionId) return;
+    if (res == null || res.$1.length < 2) {
+      _requestRoadPath(from, to);
+      return;
+    }
+    // Snapped points of the last stretch (previous fix -> newest fix).
+    final n = trace.length;
+    final path = <LatLng>[];
+    for (int k = 0; k < res.$1.length; k++) {
+      if (res.$2[k] >= n - 2) path.add(res.$1[k]);
+    }
+    if (path.isEmpty) {
+      _requestRoadPath(from, to);
+      return;
+    }
+    final snappedTo = path.last;
+    // Never a loop / jump: the road path must be close to the straight hop.
+    double len = 0;
+    for (int k = 0; k < path.length - 1; k++) {
+      len += _calculateDistance(path[k], path[k + 1]);
+    }
+    final straight = _calculateDistance(from, to);
+    if (len > straight * 1.5 + 40.0 ||
+        _calculateDistance(snappedTo, to) > 60.0) {
+      _requestRoadPath(from, to);
+      return;
+    }
+    // Same fix in the trace becomes the snapped one for the next request.
+    final ti = _liveTrace.indexWhere((p) => _calculateDistance(p, to) < 0.5);
+    if (ti >= 0) _liveTrace[ti] = snappedTo;
+
+    // Find the queued segment that ends at the raw fix.
+    int seg = -1;
+    for (int i = _liveWaypoints.length - 1; i >= 1; i--) {
+      if (_calculateDistance(_liveWaypoints[i], to) < 0.5) {
+        seg = i - 1;
+        break;
+      }
+    }
+    if (seg < 0 || seg < _liveWaypointIndex) return; // already passed
+    final interior = [
+      for (final p in path)
+        if (_calculateDistance(p, snappedTo) >= 1.0) p,
+    ];
+    if (seg > _liveWaypointIndex) {
+      // Car not on this segment yet: replace the raw fix with the road one
+      // and insert the road points before it.
+      _liveWaypoints[seg + 1] = snappedTo;
+      _liveWaypoints.insertAll(seg + 1, interior);
+      return;
+    }
+    // Car is on this segment now: continue from where it is, on the road.
+    final currentPos = liveMarkerPosition.value ?? from;
+    final ahead = _trimRouteAhead(currentPos, interior);
+    final head = _liveWaypoints.sublist(0, seg);
+    final tail = _liveWaypoints.sublist(seg + 2);
+    _liveWaypoints
+      ..clear()
+      ..addAll([...head, currentPos, ...ahead, snappedTo, ...tail]);
+    _liveWaypointIndex = head.length;
+    _liveWaypointFraction = 0.0;
   }
 
   /// Returns true when [deviceTime] is older than the newest fix already
@@ -4253,6 +4480,9 @@ class VehicleDetailController extends GetxController {
       ..add(location);
     _liveWaypointIndex = 0;
     _liveWaypointFraction = 0.0;
+    _liveTrace
+      ..clear()
+      ..add(location);
     _currentLiveSpeedMs = speedKmH > 0 ? (speedKmH / 3.6) : 0.0;
     _lastReportedSpeedKmh = speedKmH;
     _lastAcceptedGps = location;

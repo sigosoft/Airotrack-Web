@@ -276,7 +276,12 @@ class DashboardController extends GetxController {
           savedName.toLowerCase() != 'user') {
         updateUserName(savedName);
       } else {
+        debugPrint('==================== [GET PROFILE API CALL (DASHBOARD)] ====================');
+        debugPrint('URL: ${ApiConfig.baseUrl}${ApiEndPoints.profile}');
         final response = await DioClient().get(ApiEndPoints.profile);
+        debugPrint('Status Code: ${response.statusCode}');
+        debugPrint('Response Data: ${response.data}');
+        debugPrint('============================================================================');
         if (response.data != null) {
           final res = response.data;
           String? name;
@@ -300,7 +305,9 @@ class DashboardController extends GetxController {
         }
       }
     } catch (e) {
+      debugPrint('==================== [GET PROFILE ERROR (DASHBOARD)] ====================');
       debugPrint('Error loading user name: $e');
+      debugPrint('=========================================================================');
     }
   }
 

@@ -111,22 +111,21 @@ class VehicleDetailMapView extends StatelessWidget {
                               ),
                             ),
 
-                            // Action Cards Row (Share location, Add geofence, Update odometer, Add reminders, Street view)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
-                              ),
-                              child: MapBottomActionCards(),
-                            ),
-
-                            const Divider(height: 1, color: Color(0xFFEAECF0)),
-
                             // Scrollable Vehicle Details & Metrics
                             Expanded(
                               child: VehicleInfoSidebar(
                                 data: controller.vehicleDetail.value,
                                 scrollController: scrollController,
+                                // Option cards scroll with the details, after
+                                // Altitude / Fuel / Temperature / Movement.
+                                footer: Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom: MediaQuery.of(
+                                      context,
+                                    ).padding.bottom,
+                                  ),
+                                  child: const MapBottomActionCards(),
+                                ),
                               ),
                             ),
                           ],

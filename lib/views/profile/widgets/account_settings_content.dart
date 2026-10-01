@@ -49,6 +49,7 @@ class AccountSettingsContent extends StatelessWidget {
               ),
               child: Obx(() {
                 final user = controller.profileData.value.user;
+                controller.profileImageBytes.value; // rebuild on photo change
 
                 return Column(
                   children: [
@@ -56,28 +57,39 @@ class AccountSettingsContent extends StatelessWidget {
                     Center(
                       child: Stack(
                         children: [
-                          const CircleAvatar(
-                            radius: 45,
-                            backgroundColor: Color(0xFFE0E0E0),
-                            child: Icon(
-                              Icons.person,
-                              color: Color(0xFF9E9E9E),
-                              size: 56,
+                          // Photo from this device / profile API, else icon.
+                          InkWell(
+                            onTap: controller.showProfileImageOptions,
+                            customBorder: const CircleBorder(),
+                            child: CircleAvatar(
+                              radius: 45,
+                              backgroundColor: const Color(0xFFE0E0E0),
+                              backgroundImage: controller.profileImageProvider,
+                              child: controller.profileImageProvider == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      color: Color(0xFF9E9E9E),
+                                      size: 56,
+                                    )
+                                  : null,
                             ),
                           ),
                           Positioned(
                             right: 0,
                             bottom: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF00A3E0),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt_rounded,
-                                color: Colors.white,
-                                size: 16,
+                            child: GestureDetector(
+                              onTap: controller.showProfileImageOptions,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF00A3E0),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
                               ),
                             ),
                           ),

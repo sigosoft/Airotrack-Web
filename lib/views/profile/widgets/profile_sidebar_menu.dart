@@ -21,7 +21,11 @@ class ProfileSidebarMenu extends StatelessWidget {
       {'title': 'Rise Ticket', 'asset': AppAssets.riseTicket},
       {'title': 'Change Password', 'asset': AppAssets.changePassword},
       {'title': 'Configure Alerts', 'asset': AppAssets.configureAlerts},
-      {'title': 'Notification', 'asset': AppAssets.notificationss, 'hasSwitch': true},
+      {
+        'title': 'Notification',
+        'asset': AppAssets.notificationss,
+        'hasSwitch': true,
+      },
     ];
 
     if (isMobile) {
@@ -56,7 +60,10 @@ class ProfileSidebarMenu extends StatelessWidget {
                   onTap: controller.signOut,
                   borderRadius: BorderRadius.circular(6),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
                         Image.asset(
@@ -85,6 +92,7 @@ class ProfileSidebarMenu extends StatelessWidget {
             // 2. User Info Card (Compact Mobile View)
             Obx(() {
               final user = controller.profileData.value.user;
+              controller.profileImageBytes.value; // rebuild on photo change
 
               return Container(
                 padding: const EdgeInsets.all(12),
@@ -102,14 +110,17 @@ class ProfileSidebarMenu extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 20,
-                      backgroundColor: Color(0xFFE4E7EC),
-                      child: Icon(
-                        Icons.person,
-                        color: Color(0xFF667085),
-                        size: 24,
-                      ),
+                      backgroundColor: const Color(0xFFE4E7EC),
+                      backgroundImage: controller.profileImageProvider,
+                      child: controller.profileImageProvider == null
+                          ? const Icon(
+                              Icons.person,
+                              color: Color(0xFF667085),
+                              size: 24,
+                            )
+                          : null,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -169,19 +180,28 @@ class ProfileSidebarMenu extends StatelessWidget {
                       child: InkWell(
                         onTap: () {
                           if (hasSwitch) {
-                            controller.toggleNotification(!controller.isNotificationEnabled.value);
+                            controller.toggleNotification(
+                              !controller.isNotificationEnabled.value,
+                            );
                           } else {
                             controller.selectMenu(index);
                           }
                         },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFE0F2FE) : Colors.white,
+                            color: isSelected
+                                ? const Color(0xFFE0F2FE)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: isSelected ? const Color(0xFFBEE3F8) : const Color(0xFFEAECF0),
+                              color: isSelected
+                                  ? const Color(0xFFBEE3F8)
+                                  : const Color(0xFFEAECF0),
                               width: 1,
                             ),
                           ),
@@ -199,8 +219,12 @@ class ProfileSidebarMenu extends StatelessWidget {
                                 item['title'] as String,
                                 style: TextStyle(
                                   fontSize: 12.5,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                  color: isSelected ? const Color(0xFF1D2939) : const Color(0xFF344054),
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.w500,
+                                  color: isSelected
+                                      ? const Color(0xFF1D2939)
+                                      : const Color(0xFF344054),
                                 ),
                               ),
                               if (hasSwitch) ...[
@@ -208,7 +232,8 @@ class ProfileSidebarMenu extends StatelessWidget {
                                 Transform.scale(
                                   scale: 0.65,
                                   child: CupertinoSwitch(
-                                    value: controller.isNotificationEnabled.value,
+                                    value:
+                                        controller.isNotificationEnabled.value,
                                     activeColor: const Color(0xFF00A3E0),
                                     onChanged: controller.toggleNotification,
                                   ),
@@ -264,6 +289,7 @@ class ProfileSidebarMenu extends StatelessWidget {
             // 2. User Info Card
             Obx(() {
               final user = controller.profileData.value.user;
+              controller.profileImageBytes.value; // rebuild on photo change
 
               return Container(
                 padding: const EdgeInsets.all(16),
@@ -281,14 +307,17 @@ class ProfileSidebarMenu extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 26,
-                      backgroundColor: Color(0xFFE4E7EC),
-                      child: Icon(
-                        Icons.person,
-                        color: Color(0xFF667085),
-                        size: 32,
-                      ),
+                      backgroundColor: const Color(0xFFE4E7EC),
+                      backgroundImage: controller.profileImageProvider,
+                      child: controller.profileImageProvider == null
+                          ? const Icon(
+                              Icons.person,
+                              color: Color(0xFF667085),
+                              size: 32,
+                            )
+                          : null,
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -343,20 +372,29 @@ class ProfileSidebarMenu extends StatelessWidget {
                   return InkWell(
                     onTap: () {
                       if (hasSwitch) {
-                        controller.toggleNotification(!controller.isNotificationEnabled.value);
+                        controller.toggleNotification(
+                          !controller.isNotificationEnabled.value,
+                        );
                       } else {
                         controller.selectMenu(index);
                       }
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       margin: const EdgeInsets.only(bottom: 10),
                       decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFFE0F2FE) : Colors.white,
+                        color: isSelected
+                            ? const Color(0xFFE0F2FE)
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isSelected ? const Color(0xFFBEE3F8) : const Color(0xFFEAECF0),
+                          color: isSelected
+                              ? const Color(0xFFBEE3F8)
+                              : const Color(0xFFEAECF0),
                           width: 1,
                         ),
                       ),
@@ -374,8 +412,12 @@ class ProfileSidebarMenu extends StatelessWidget {
                               item['title'] as String,
                               style: TextStyle(
                                 fontSize: 13.5,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                color: isSelected ? const Color(0xFF1D2939) : const Color(0xFF344054),
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? const Color(0xFF1D2939)
+                                    : const Color(0xFF344054),
                               ),
                             ),
                           ),
@@ -403,7 +445,10 @@ class ProfileSidebarMenu extends StatelessWidget {
                 onTap: controller.signOut,
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

@@ -181,8 +181,8 @@ class TrackingMapContainer extends StatelessWidget {
                         // heading instead of snapping sideways).
                         Marker(
                           point: vehiclePos,
-                          width: 44,
-                          height: 44,
+                          width: 80,
+                          height: 80,
                           alignment: Alignment.center,
                           child: GestureDetector(
                             onTap: controller.toggleMapDialog,
@@ -220,86 +220,91 @@ class TrackingMapContainer extends StatelessWidget {
                   right: isMobile ? 12 : null,
                   top: mobileTop ? 8 : null,
                   bottom: dialogBottom,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      width: isMobile ? null : 310,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x1F000000),
-                            blurRadius: 16,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Header with Vehicle Number & Close 'X' Button
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                detail.vehicleNumber,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1D2939),
-                                ),
-                              ),
-                              InkWell(
-                                onTap: controller.hideMapDialog,
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFF2F4F7),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.close_rounded,
-                                    size: 16,
-                                    color: Color(0xFF344054),
+                  // Taps on the dialog stay on the dialog (never reach the map).
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        width: isMobile ? null : 310,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x1F000000),
+                              blurRadius: 16,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header with Vehicle Number & Close 'X' Button
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text(
+                                  detail.vehicleNumber,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1D2939),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: controller.hideMapDialog,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFF2F4F7),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      size: 16,
+                                      color: Color(0xFF344054),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
 
-                          // Table Dynamic Info Rows
-                          _buildDialogRow(
-                            'Device Time:',
-                            detail.deviceTime.isNotEmpty
-                                ? detail.deviceTime
-                                : 'N/A',
-                          ),
-                          const SizedBox(height: 6),
-                          _buildDialogRow(
-                            'Server Time:',
-                            detail.serverTime.isNotEmpty
-                                ? detail.serverTime
-                                : 'N/A',
-                          ),
-                          const SizedBox(height: 6),
-                          _buildDialogRow(
-                            'Duration:',
-                            controller.liveDialogDuration,
-                          ),
-                          const SizedBox(height: 6),
-                          _buildDialogRow(
-                            'Address:',
-                            detail.address.isNotEmpty
-                                ? detail.address
-                                : 'Location fetching...',
-                          ),
-                        ],
+                            // Table Dynamic Info Rows
+                            _buildDialogRow(
+                              'Device Time:',
+                              detail.deviceTime.isNotEmpty
+                                  ? detail.deviceTime
+                                  : 'N/A',
+                            ),
+                            const SizedBox(height: 6),
+                            _buildDialogRow(
+                              'Server Time:',
+                              detail.serverTime.isNotEmpty
+                                  ? detail.serverTime
+                                  : 'N/A',
+                            ),
+                            const SizedBox(height: 6),
+                            _buildDialogRow(
+                              'Duration:',
+                              controller.liveDialogDuration,
+                            ),
+                            const SizedBox(height: 6),
+                            _buildDialogRow(
+                              'Address:',
+                              detail.address.isNotEmpty
+                                  ? detail.address
+                                  : 'Location fetching...',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

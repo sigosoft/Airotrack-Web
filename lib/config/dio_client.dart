@@ -93,10 +93,12 @@ class DioClient {
   }
 
   static bool _shouldLog(String path) {
+    if (path.contains(ApiEndPoints.profile)) return true;
     return false;
   }
 
   static String _endpointTag(String path) {
+    if (path.contains(ApiEndPoints.profile)) return 'PROFILE';
     return 'API';
   }
 

@@ -19,10 +19,15 @@ class VehicleInfoSidebar extends StatelessWidget {
   final VehicleDetailData data;
   final ScrollController? scrollController;
 
+  /// Optional widget shown at the end of the list, after the sensor tiles
+  /// (the mobile bottom sheet puts the option cards here).
+  final Widget? footer;
+
   const VehicleInfoSidebar({
     super.key,
     required this.data,
     this.scrollController,
+    this.footer,
   });
 
   @override
@@ -282,13 +287,12 @@ class VehicleInfoSidebar extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // 6. Action PNG Image Assets Toolbar (Ignition.png, On_Off.png, battery charge.png, Power.png, Wifi.png)
+            // 6. Action PNG Image Assets Toolbar (Ignition.png, On_Off.png, Power.png, Wifi.png)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 const _ImageAssetPill(assetPath: AppAssets.ignition),
                 const _ImageAssetPill(assetPath: AppAssets.onOff),
-                const _ImageAssetPill(assetPath: AppAssets.batteryCharge),
                 _ImageAssetPill(
                   assetPath: AppAssets.power,
                   onTap: () {
@@ -503,6 +507,7 @@ class VehicleInfoSidebar extends StatelessWidget {
                 );
               },
             ),
+            if (footer != null) ...[const SizedBox(height: 12), footer!],
           ],
         ),
       ),

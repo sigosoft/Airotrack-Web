@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:airotrack_web/constants/app_strings.dart';
+import 'package:airotrack_web/services/app_settings.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -88,13 +90,15 @@ class FcmService {
 
   /// Current device token (null if permission denied / not supported).
   Future<String?> getToken() async {
+    // Notification switch OFF: do not register this device for pushes.
+    await AppSettings.to.ready;
+    if (!AppSettings.to.notificationsEnabled.value) return null;
     try {
-      final validVapid = (kIsWeb && webVapidKey.isNotEmpty && !webVapidKey.startsWith('PASTE'))
+      final validVapid =
+          (kIsWeb && webVapidKey.isNotEmpty && !webVapidKey.startsWith('PASTE'))
           ? webVapidKey
           : null;
-      _token = await FirebaseMessaging.instance.getToken(
-        vapidKey: validVapid,
-      );
+      _token = await FirebaseMessaging.instance.getToken(vapidKey: validVapid);
       if (_token != null) await _saveToken(_token!);
       debugPrint('[FCM] token: $_token');
     } catch (e) {
@@ -114,6 +118,8 @@ class FcmService {
   }
 
   void _onForegroundMessage(RemoteMessage message) {
+    // Profile > Notification switch OFF: show nothing.
+    if (!AppSettings.to.notificationsEnabled.value) return;
     final title = message.notification?.title ?? message.data['title'];
     final body = message.notification?.body ?? message.data['body'];
     if (title == null && body == null) return;

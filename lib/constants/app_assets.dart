@@ -28,7 +28,8 @@ class AppAssets {
   static const String successTick = 'lib/assets/images/Sucess tick.png';
 
   // Toolbar Action Assets above Device Time / Server Time
-  static const String ignition = 'lib/assets/images/Key start.png';
+  static const String ignition = 'lib/assets/images/Ignition.png';
+  static const String keyStart = 'lib/assets/images/Key start.png';
   static const String onOff = 'lib/assets/images/On_Off.png';
   static const String batteryCharge = 'lib/assets/images/battery charge.png';
   static const String power = 'lib/assets/images/Power.png';

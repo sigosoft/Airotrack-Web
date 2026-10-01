@@ -1,5 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:airotrack_web/constants/app_strings.dart';
+import 'package:airotrack_web/services/app_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../config/dio_client.dart';
@@ -13,14 +19,20 @@ import '../views/profile/widgets/sign_out_confirmation_dialog.dart';
 
 class ProfileController extends GetxController {
   final RxInt selectedMenuIndex = 0.obs;
-  final RxBool isNotificationEnabled = true.obs;
+
+  /// Mirrors AppSettings.notificationsEnabled (kept for the existing UI).
+  RxBool get isNotificationEnabled => AppSettings.to.notificationsEnabled;
+
+  /// Profile photo picked on this device (no upload API yet, so it is kept
+  /// on this device only). Null = no local photo.
+  final Rxn<Uint8List> profileImageBytes = Rxn<Uint8List>();
+  static const String _kProfileImage = 'profile_image_b64';
   final RxBool isLoading = false.obs;
   final RxBool isChangingPassword = false.obs;
 
   final TextEditingController currentPasswordController =
       TextEditingController();
-  final TextEditingController newPasswordController =
-      TextEditingController();
+  final TextEditingController newPasswordController = TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
 
@@ -69,6 +81,7 @@ class ProfileController extends GetxController {
   void onInit() {
     super.onInit();
     _loadUserProfile();
+    _loadProfileImage();
     fetchProfileDetails();
   }
 
@@ -264,8 +277,121 @@ class ProfileController extends GetxController {
     selectedMenuIndex.value = index;
   }
 
+  /// Notification switch: ON = this device receives and shows push
+  /// notifications, OFF = it does not (see AppSettings).
   void toggleNotification(bool value) {
-    isNotificationEnabled.value = value;
+    AppSettings.to.setNotificationsEnabled(value);
+    AppToast.show(
+      value ? 'Notifications turned on' : 'Notifications turned off',
+    );
+  }
+
+  // ---------------- Profile photo (this device) ----------------
+  Future<void> _loadProfileImage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final b64 = prefs.getString(_kProfileImage);
+      if (b64 != null && b64.isNotEmpty) {
+        profileImageBytes.value = base64Decode(b64);
+      }
+    } catch (e) {
+      debugPrint('Error loading profile image: $e');
+    }
+  }
+
+  /// Picks a photo from the gallery or the camera and keeps it.
+  Future<void> pickProfileImage(ImageSource source) async {
+    try {
+      final file = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      profileImageBytes.value = bytes;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kProfileImage, base64Encode(bytes));
+      AppToast.show('Profile photo updated');
+    } catch (e) {
+      debugPrint('Error picking profile image: $e');
+      AppToast.show('Could not open the camera / gallery', isError: true);
+    }
+  }
+
+  Future<void> removeProfileImage() async {
+    profileImageBytes.value = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kProfileImage);
+    } catch (_) {}
+    AppToast.show('Profile photo removed');
+  }
+
+  /// Image to show in the avatars: the photo picked on this device, else
+  /// the profile_img from the profile API, else null (person icon).
+  ImageProvider? get profileImageProvider {
+    final bytes = profileImageBytes.value;
+    if (bytes != null) return MemoryImage(bytes);
+    final url = profileData.value.user.avatarUrl;
+    if (url.isNotEmpty && url != 'null') {
+      return NetworkImage(
+        url.startsWith('http') ? url : '${ApiConfig.imageUrl}$url',
+      );
+    }
+    return null;
+  }
+
+  /// Bottom sheet: Gallery / Camera / Remove.
+  void showProfileImageOptions() {
+    Get.bottomSheet(
+      SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () {
+                  Get.back();
+                  pickProfileImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take photo'),
+                onTap: () {
+                  Get.back();
+                  pickProfileImage(ImageSource.camera);
+                },
+              ),
+              if (profileImageBytes.value != null)
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    color: Color(0xFFE53935),
+                  ),
+                  title: const Text(
+                    'Remove photo',
+                    style: TextStyle(color: Color(0xFFE53935)),
+                  ),
+                  onTap: () {
+                    Get.back();
+                    removeProfileImage();
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> signOut() async {
@@ -352,13 +478,23 @@ class ProfileController extends GetxController {
     }
 
     if (newPass.length < 6) {
-      AppToast.show('New password must be at least 6 characters', isError: true);
+      AppToast.show(
+        'New password must be at least 6 characters',
+        isError: true,
+      );
       return false;
     }
 
-    if (confirmPass.isNotEmpty && newPass != confirmPass) {
-      AppToast.show('New password and confirm password do not match',
-          isError: true);
+    if (confirmPass.isEmpty) {
+      AppToast.show('Please confirm the new password', isError: true);
+      return false;
+    }
+
+    if (newPass != confirmPass) {
+      AppToast.show(
+        'New password and confirm password do not match',
+        isError: true,
+      );
       return false;
     }
 
@@ -366,19 +502,18 @@ class ProfileController extends GetxController {
       isChangingPassword.value = true;
       final response = await DioClient().post(
         ApiEndPoints.changePassword,
-        body: {
-          'current_password': currentPass,
-          'password': newPass,
-        },
+        body: {'current_password': currentPass, 'password': newPass},
       );
 
-      if (response.statusCode == 200 ||
-          response.statusCode == 201 ||
-          (response.data is Map && response.data['status'] == true)) {
+      // The API answers 200 for both cases; "status" says if it worked
+      // ({"status": false, "message": "Current password does not match"}).
+      final data = response.data is Map ? response.data as Map : null;
+      final ok = data != null
+          ? data['status'] == true
+          : (response.statusCode == 200 || response.statusCode == 201);
+      if (ok) {
         AppToast.show(
-          (response.data is Map && response.data['message'] != null)
-              ? response.data['message'].toString()
-              : 'Password changed successfully!',
+          data?['message']?.toString() ?? 'Password changed successfully!',
         );
 
         currentPasswordController.clear();

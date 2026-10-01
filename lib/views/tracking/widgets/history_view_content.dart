@@ -160,8 +160,8 @@ class HistoryViewContent extends StatelessWidget {
                     // Vehicle Marker (Normal upright when stopped/resting, aligned with moving direction when playing)
                     Marker(
                       point: vehiclePos,
-                      width: 44,
-                      height: 44,
+                      width: 80,
+                      height: 80,
                       alignment: Alignment.center,
                       child: GestureDetector(
                         onTap: controller.onHistoryCarTap,
@@ -484,11 +484,15 @@ class HistoryViewContent extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
 
-                    // Settings / Tune Icon
-                    const Icon(
-                      Icons.tune_rounded,
-                      size: 16,
-                      color: Color(0xFF0288D1),
+                    // Settings / Tune Icon: pick a time -> where the
+                    // vehicle was at that moment.
+                    InkWell(
+                      onTap: () => _pickHistoryTime(context, controller),
+                      child: const Icon(
+                        Icons.tune_rounded,
+                        size: 16,
+                        color: Color(0xFF0288D1),
+                      ),
                     ),
                   ],
                 ),
@@ -1255,4 +1259,41 @@ class _HorizontalDashedLine extends StatelessWidget {
       },
     );
   }
+}
+
+/// Tune icon: the user picks a time (and a day, when the selected period
+/// covers more than one day) and the map shows where the vehicle was then.
+Future<void> _pickHistoryTime(
+  BuildContext context,
+  VehicleDetailController controller,
+) async {
+  final first = controller.historyFirstTime;
+  final last = controller.historyLastTime;
+  if (first == null || last == null) {
+    controller.showHistoryAtTime(DateTime.now()); // shows "no history" toast
+    return;
+  }
+  DateTime day = DateTime(first.year, first.month, first.day);
+  final lastDay = DateTime(last.year, last.month, last.day);
+  if (lastDay.isAfter(day)) {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: lastDay,
+      firstDate: day,
+      lastDate: lastDay,
+      helpText: 'Select day',
+    );
+    if (picked == null) return;
+    day = picked;
+  }
+  if (!context.mounted) return;
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(first),
+    helpText: 'Where was the vehicle at',
+  );
+  if (time == null) return;
+  controller.showHistoryAtTime(
+    DateTime(day.year, day.month, day.day, time.hour, time.minute),
+  );
 }

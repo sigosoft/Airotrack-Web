@@ -34,6 +34,7 @@ class UserProfile {
         json['avatar']?.toString() ??
         json['image']?.toString() ??
         json['profile_image']?.toString() ??
+        json['profile_img']?.toString() ?? // key used by GET /profile
         '';
 
     final companyVal =
