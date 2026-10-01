@@ -5089,8 +5089,25 @@ class VehicleDetailController extends GetxController {
   void _rtPublish({bool force = false}) {
     final p = _rtPos;
     if (p == null) return;
-    liveMarkerPosition.value = p;
-    if (isLiveLocked.value) _followLiveCamera(p);
+    final shown = _rtKeepLeft(p);
+    liveMarkerPosition.value = shown;
+    if (isLiveLocked.value) _followLiveCamera(shown);
+  }
+
+  /// India drives on the LEFT. The road line is the middle of the road, so
+  /// the car is drawn this far to the left of its direction of travel,
+  /// in its own lane instead of on the middle / the other side.
+  static const double _rtKeepLeftM = 3.5;
+
+  LatLng _rtKeepLeft(LatLng p) {
+    if (!_rtHasHeading) return p;
+    final b = (_rtUiHeading - 90.0) * math.pi / 180.0; // left of travel
+    final dLat = _rtKeepLeftM * math.cos(b) / 111320.0;
+    final dLng =
+        _rtKeepLeftM *
+        math.sin(b) /
+        (111320.0 * math.cos(p.latitude * math.pi / 180.0));
+    return LatLng(p.latitude + dLat, p.longitude + dLng);
   }
 
   // ---------------- Road (map matching on the GPS trace) ----------------
