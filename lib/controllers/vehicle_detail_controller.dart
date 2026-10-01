@@ -2803,7 +2803,9 @@ class VehicleDetailController extends GetxController {
           : res.data;
       if (res.statusCode != 200 || data is! Map) {
         debugPrint('[History] Google Roads refused (${res.statusCode}): $data');
-        if (res.statusCode == 403 || res.statusCode == 400) {
+        // 403 = key / Roads API not allowed. A 400 is only this one bad
+        // request: it must not switch Google off for the whole session.
+        if (res.statusCode == 403) {
           _googleRoadsOk = false; // key not allowed: use OSRM from now on
         }
         return null;
@@ -3730,7 +3732,13 @@ class VehicleDetailController extends GetxController {
           _lastLiveUpdateReceivedAt = DateTime.now();
           fed = true;
 
-          if (reconnectOnly && _liveWaypoints.isNotEmpty) {
+          // Home list refresh / WebSocket reconnect while this vehicle is
+          // already moving on the map: feed the fix like any other one.
+          // (Snapping here reset the road engine and threw the car onto
+          // raw GPS, off the road.)
+          if (reconnectOnly &&
+              (_liveWaypoints.isNotEmpty ||
+                  (_useRoadEngine && _rtPos != null))) {
             _onLiveDevicePosition(
               location,
               speed,
@@ -4288,7 +4296,8 @@ class VehicleDetailController extends GetxController {
         deviceTime == null &&
         _lastAcceptedGps != null &&
         _calculateDistance(_lastAcceptedGps!, location) < 0.5;
-    if ((sameTime || samePlace) && _liveWaypoints.isNotEmpty) {
+    if ((sameTime || samePlace) &&
+        (_liveWaypoints.isNotEmpty || (_useRoadEngine && _rtPos != null))) {
       _lastReportedSpeedKmh = speedKmH;
       return;
     }
@@ -4913,6 +4922,7 @@ class VehicleDetailController extends GetxController {
     }
 
     _rtUpdateHeading(dt);
+    _rtUpdateKeepLeft(dt);
     _rtPublish();
   }
 
@@ -5097,7 +5107,16 @@ class VehicleDetailController extends GetxController {
   /// India drives on the LEFT. The road line is the middle of the road, so
   /// the car is drawn this far to the left of its direction of travel,
   /// in its own lane instead of on the middle / the other side.
-  static const double _rtKeepLeftM = 3.5;
+  /// Wide roads (fast driving) get a full lane offset; narrow village roads
+  /// only a small one, otherwise the car looked off the edge of the road.
+  double _rtKeepLeftM = 1.5;
+
+  void _rtUpdateKeepLeft(double dt) {
+    final kmh = math.max(_lastReportedSpeedKmh, _rtInferredKmh);
+    final target = (_rtMoving && kmh >= 40.0) ? 3.0 : 1.5;
+    final a = 1.0 - math.exp(-dt / 1.5);
+    _rtKeepLeftM += (target - _rtKeepLeftM) * a;
+  }
 
   LatLng _rtKeepLeft(LatLng p) {
     if (!_rtHasHeading) return p;
@@ -5137,12 +5156,18 @@ class VehicleDetailController extends GetxController {
       try {
         List<LatLng> road = const [];
         if (trace.length >= 2) {
-          road = await _directionsService
-              .matchTrace(trace, radiusMeters: 50)
-              .timeout(const Duration(seconds: 8));
-          // DirectionsService returns the raw trace itself when no road
-          // match was possible: that is NOT a road.
-          if (_rtSameAsTrace(road, trace)) road = const [];
+          // 1) Google Roads directly (plain request, works in the browser,
+          //    same roads as the Google map - like the mobile app gets).
+          road = await _rtMatchOnGoogle(trace);
+          if (road.length < 2) {
+            // 2) Fallback: DirectionsService (OSRM).
+            road = await _directionsService
+                .matchTrace(trace, radiusMeters: 50)
+                .timeout(const Duration(seconds: 8));
+            // DirectionsService returns the raw trace itself when no road
+            // match was possible: that is NOT a road.
+            if (_rtSameAsTrace(road, trace)) road = const [];
+          }
         } else {
           // Single fix (first position): road route from it to itself is
           // not possible; ask the nearest road point instead.
@@ -5197,6 +5222,22 @@ class VehicleDetailController extends GetxController {
         }
       }
     }();
+  }
+
+  /// Live GPS trace snapped on Google's roads (the roads drawn on the map).
+  /// Empty when Google is not available, so the caller can fall back.
+  Future<List<LatLng>> _rtMatchOnGoogle(List<LatLng> trace) async {
+    try {
+      final res = await _googleSnap(
+        trace,
+        List<int>.generate(trace.length, (i) => i),
+      ).timeout(const Duration(seconds: 8));
+      if (res == null || res.$1.length < 2) return const [];
+      return res.$1;
+    } catch (e) {
+      debugPrint('[LiveTrack] Google road match failed: $e');
+      return const [];
+    }
   }
 
   bool _rtSameAsTrace(List<LatLng> road, List<LatLng> trace) {
