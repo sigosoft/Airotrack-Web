@@ -1786,11 +1786,11 @@ class VehicleDetailController extends GetxController {
                 ),
                 timestamp:
                     currentPos['device_time']?.toString() ?? val.timestamp,
-                distanceKm: currentPos['kilometer'] != null
-                    ? '${currentPos['kilometer']} km'
-                    : (todayStats?['total_kilometers_today'] != null
-                          ? '${todayStats!['total_kilometers_today']} km'
-                          : val.distanceKm),
+                // Today's distance only. position 'kilometer' is the
+                // device's running counter (e.g. 4318.51), not today's km.
+                distanceKm: todayStats?['total_kilometers_today'] != null
+                    ? '${todayStats!['total_kilometers_today']} km'
+                    : val.distanceKm,
                 speedKmph: speed.toInt(),
                 coordinates: (lat != null && lng != null)
                     ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
@@ -3692,11 +3692,11 @@ class VehicleDetailController extends GetxController {
                   data.vehicleInfo?.vehicleNumber ?? val.vehicleNumber,
               odometerDigits: odoDigits,
               timestamp: pos.deviceTime ?? val.timestamp,
-              distanceKm: pos.kilometer != null
-                  ? '${pos.kilometer} km'
-                  : (todayStats?.totalKilometersToday != null
-                        ? '${todayStats!.totalKilometersToday!.toStringAsFixed(1)} km'
-                        : val.distanceKm),
+              // Today's distance only (position.kilometer is the device's
+              // running counter, not today's km).
+              distanceKm: todayStats?.totalKilometersToday != null
+                  ? '${todayStats!.totalKilometersToday!.toStringAsFixed(1)} km'
+                  : val.distanceKm,
               speedKmph: speed.toInt(),
               coordinates: (lat != null && lng != null)
                   ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
@@ -3721,7 +3721,7 @@ class VehicleDetailController extends GetxController {
                   : val.maxSpeedKmph,
               todayOdoKm: todayStats?.totalKilometersToday != null
                   ? todayStats!.totalKilometersToday!.toStringAsFixed(1)
-                  : (pos.kilometer ?? val.todayOdoKm),
+                  : val.todayOdoKm,
               sensors: dynamicSensors,
             );
           }
@@ -3849,11 +3849,11 @@ class VehicleDetailController extends GetxController {
                   data.vehicleInfo?.vehicleNumber ?? val.vehicleNumber,
               odometerDigits: odo,
               timestamp: pos.deviceTime ?? val.timestamp,
-              distanceKm: pos.kilometer != null
-                  ? '${pos.kilometer} km'
-                  : (todayStats?.totalKilometersToday != null
-                        ? '${todayStats!.totalKilometersToday!.toStringAsFixed(1)} km'
-                        : val.distanceKm),
+              // Today's distance only (position.kilometer is the device's
+              // running counter, not today's km).
+              distanceKm: todayStats?.totalKilometersToday != null
+                  ? '${todayStats!.totalKilometersToday!.toStringAsFixed(1)} km'
+                  : val.distanceKm,
               speedKmph: speed.toInt(),
               coordinates: (lat != null && lng != null)
                   ? '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E'
@@ -3878,7 +3878,7 @@ class VehicleDetailController extends GetxController {
                   : val.maxSpeedKmph,
               todayOdoKm: todayStats?.totalKilometersToday != null
                   ? todayStats!.totalKilometersToday!.toStringAsFixed(1)
-                  : (pos.kilometer ?? val.todayOdoKm),
+                  : val.todayOdoKm,
               sensors: dynamicSensors,
             );
           }
@@ -4190,7 +4190,6 @@ class VehicleDetailController extends GetxController {
           map['last_update']?.toString() ??
           map['server_time']?.toString() ??
           vehicleDetail.value.serverTime;
-      final km = map['kilometer']?.toString();
 
       final dynamicSensors = _buildDynamicSensors(
         rawMap: map,
@@ -4203,11 +4202,12 @@ class VehicleDetailController extends GetxController {
             vehicleNumber: val.vehicleNumber,
             odometerDigits: odo,
             timestamp: devTime.isNotEmpty ? devTime : val.timestamp,
-            distanceKm: km != null
-                ? '$km km'
-                : (todayMap?['total_kilometers_today'] != null
-                      ? '${todayMap!['total_kilometers_today']} km'
-                      : val.distanceKm),
+            // The live update's 'kilometer' is the device's running counter
+            // (e.g. 4318.51), not today's km: keep today's figure from the
+            // snapshot unless the update itself carries today's total.
+            distanceKm: todayMap?['total_kilometers_today'] != null
+                ? '${todayMap!['total_kilometers_today']} km'
+                : val.distanceKm,
             speedKmph: speed.toInt(),
             coordinates:
                 '${lat.toStringAsFixed(5)}°N ${lng.toStringAsFixed(5)}°E',
@@ -4242,7 +4242,6 @@ class VehicleDetailController extends GetxController {
                 val.maxSpeedKmph,
             todayOdoKm:
                 todayMap?['total_kilometers_today']?.toString() ??
-                km ??
                 val.todayOdoKm,
             sensors: dynamicSensors,
           );
