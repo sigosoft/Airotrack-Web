@@ -4759,14 +4759,22 @@ class VehicleDetailController extends GetxController {
   DateTime? _rtFailCooldownUntil;
   LatLng? _rtLastMatchedTarget;
   DateTime? _rtReverseSince;
+  // Where the car was when its direction was last measured. The car faces
+  // the way it has REALLY moved since then (not a guess about the road
+  // ahead), so on a bend its nose always follows its own path and it does
+  // not slide sideways ("floating").
+  LatLng? _rtHeadAnchor;
 
   static const double _rtSpeedTau = 0.50;
   static const double _rtMaxGlideMs = 45.0;
   static const double _rtMinRollMs = 0.6;
   static const double _rtStoppedCreepMs = 0.35;
   static const double _rtStoppedDeadbandM = 6.0;
-  static const double _rtHeadingLookAheadM = 14.0;
-  static const double _rtMaxHeadingDegPerSec = 60.0;
+  // Heading = direction of the road just in front of the car. 14 m made
+  // the car turn long before the corner (it looked like floating across
+  // the junction); 60 deg/s made it finish the turn too late.
+  static const double _rtHeadingLookAheadM = 6.0;
+  static const double _rtMaxHeadingDegPerSec = 120.0;
   static const double _rtWaypointMinM = 2.0;
   static const double _rtMinRouteM = 8.0;
   static const double _rtMaxBackwardDeg = 95.0;
@@ -4794,6 +4802,7 @@ class VehicleDetailController extends GetxController {
     _rtFailCooldownUntil = null;
     _rtLastMatchedTarget = null;
     _rtReverseSince = null;
+    _rtHeadAnchor = null;
   }
 
   // ---------------- GPS intake ----------------
@@ -4883,6 +4892,7 @@ class VehicleDetailController extends GetxController {
         ? _rtClosestForwardPoint(location, _rtCorridor)
         : location;
     _rtPos = placed;
+    _rtHeadAnchor = null; // jump, not driving
     _rtTarget = location;
     _lastAcceptedGps = location;
     _lastGpsTime = DateTime.now();
@@ -5000,6 +5010,7 @@ class VehicleDetailController extends GetxController {
     if (_calculateDistance(_rtPos!, onNow) > 2.0 &&
         !(_rtHasHeading && _rtIsBehind(_rtPos!, onNow))) {
       _rtPos = onNow;
+      _rtHeadAnchor = null; // jump, not driving
     }
     final ahead = _rtTrimAhead(_rtPos!, _rtCorridor);
     final limited = _rtTrimToUpdate(ahead, gpsOnRoad);
@@ -5035,8 +5046,26 @@ class VehicleDetailController extends GetxController {
 
   // ---------------- Heading ----------------
   void _rtUpdateHeading(double dt) {
-    if (_rtQueue.isNotEmpty) {
-      final ahead = _rtBearingLookAhead(_rtPos!, _rtHeadingLookAheadM);
+    final pos = _rtPos!;
+    double? dir;
+    final anchor = _rtHeadAnchor;
+    if (anchor == null) {
+      _rtHeadAnchor = pos;
+    } else {
+      final moved = _calculateDistance(anchor, pos);
+      if (moved > 15.0) {
+        _rtHeadAnchor = pos; // a jump: not a direction
+      } else if (moved >= 1.5) {
+        dir = _getBearing(anchor, pos); // direction actually driven
+        _rtHeadAnchor = pos;
+      }
+    }
+    // No direction yet at all: take it from the road in front.
+    if (dir == null && !_rtHasHeading && _rtQueue.isNotEmpty) {
+      dir = _rtBearingLookAhead(pos, _rtHeadingLookAheadM);
+    }
+    {
+      final ahead = dir;
       if (ahead != null) {
         if (!_rtHasHeading) {
           _rtSetLockedBearing(ahead);
@@ -5152,21 +5181,29 @@ class VehicleDetailController extends GetxController {
   /// only a small one, otherwise the car looked off the edge of the road.
   double _rtKeepLeftM = 1.5;
 
+  // 1 = full lane offset, 0 = car on the road line. Goes to 0 while the
+  // car is turning, so the offset cannot push it off the corner.
+  double _rtTurnFade = 1.0;
+
   void _rtUpdateKeepLeft(double dt) {
     final kmh = math.max(_lastReportedSpeedKmh, _rtInferredKmh);
     final target = (_rtMoving && kmh >= 40.0) ? 3.0 : 1.5;
     final a = 1.0 - math.exp(-dt / 1.5);
     _rtKeepLeftM += (target - _rtKeepLeftM) * a;
+
+    final turning = _rtBearingDelta(_rtUiHeading, _rtLockedBearing).abs();
+    final fadeTarget = (1.0 - turning / 30.0).clamp(0.0, 1.0);
+    final b = 1.0 - math.exp(-dt / 0.3);
+    _rtTurnFade += (fadeTarget - _rtTurnFade) * b;
   }
 
   LatLng _rtKeepLeft(LatLng p) {
     if (!_rtHasHeading) return p;
     final b = (_rtUiHeading - 90.0) * math.pi / 180.0; // left of travel
-    final dLat = _rtKeepLeftM * math.cos(b) / 111320.0;
+    final m = _rtKeepLeftM * _rtTurnFade;
+    final dLat = m * math.cos(b) / 111320.0;
     final dLng =
-        _rtKeepLeftM *
-        math.sin(b) /
-        (111320.0 * math.cos(p.latitude * math.pi / 180.0));
+        m * math.sin(b) / (111320.0 * math.cos(p.latitude * math.pi / 180.0));
     return LatLng(p.latitude + dLat, p.longitude + dLng);
   }
 
@@ -5231,6 +5268,7 @@ class VehicleDetailController extends GetxController {
               _rtPos != null &&
               _calculateDistance(_rtPos!, road.first) <= 40.0) {
             _rtPos = road.first;
+            _rtHeadAnchor = null; // jump, not driving
             _rtPublish(force: true);
           }
           return;
@@ -5240,7 +5278,7 @@ class VehicleDetailController extends GetxController {
         _rtLastMatchedTarget = toPt;
         // Corridor kept in the direction of travel, so "road ahead" never
         // points backwards.
-        var prepared = _rtOrientWithTravel(road);
+        var prepared = _rtRemoveSpurs(_rtOrientWithTravel(road));
         _rtCorridor
           ..clear()
           ..addAll(prepared);
@@ -5325,16 +5363,57 @@ class VehicleDetailController extends GetxController {
       ..clear()
       ..addAll(ahead);
     _rtPos = onNew;
+    _rtHeadAnchor = null; // jump, not driving
+  }
+
+  /// Removes short out-and-back pieces from a road line. At junctions and
+  /// at low speed Google sometimes puts one GPS point on the side road (or
+  /// a little back), so the line goes a few metres into the side road and
+  /// returns. The car drove that piece and stood across the road.
+  List<LatLng> _rtRemoveSpurs(List<LatLng> path) {
+    if (path.length < 3) return path;
+    final out = List<LatLng>.from(path);
+    var changed = true;
+    var guard = 0;
+    while (changed && guard++ < 200) {
+      changed = false;
+      for (var i = 1; i < out.length - 1; i++) {
+        final a = out[i - 1], b = out[i], c = out[i + 1];
+        final ab = _calculateDistance(a, b);
+        final bc = _calculateDistance(b, c);
+        if (ab < 0.3 || bc < 0.3) {
+          out.removeAt(i); // duplicate point
+          changed = true;
+          break;
+        }
+        final turn = _rtBearingDelta(
+          _getBearing(a, b),
+          _getBearing(b, c),
+        ).abs();
+        // Sharp reversal over a short piece = spur, not a real road turn.
+        if (turn > 135.0 && math.min(ab, bc) < 30.0) {
+          out.removeAt(i);
+          changed = true;
+          break;
+        }
+      }
+    }
+    return out.length >= 2 ? out : path;
   }
 
   /// [path] without its leading points that lie behind [from] (relative to
   /// the car's heading), within 30 m.
   List<LatLng> _rtDropBehind(LatLng from, List<LatLng> path) {
     var i = 0;
+    // Keep only points well in FRONT (within 35 deg of the heading), so the
+    // car slides onto the new line at a shallow angle instead of moving
+    // sideways across the road.
+    bool notAhead(LatLng p) =>
+        !_rtHasHeading ||
+        _rtBearingDelta(_rtLockedBearing, _getBearing(from, p)).abs() > 35.0;
     while (i < path.length &&
         _calculateDistance(from, path[i]) < 30.0 &&
-        (_calculateDistance(from, path[i]) < 0.5 ||
-            _rtIsBehind(from, path[i]))) {
+        (_calculateDistance(from, path[i]) < 0.5 || notAhead(path[i]))) {
       i++;
     }
     return path.sublist(i);
