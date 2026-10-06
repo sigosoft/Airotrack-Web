@@ -899,7 +899,14 @@ class VehicleDetailController extends GetxController {
       final pts = _extractHistoryPoints(response.data);
       _todayPoints = pts;
       _rebuildLiveOverlays();
-      if (!_liveHeadingKnown) {
+      if (_useRoadEngine) {
+        // Road engine owns the heading: only seed it when it has none yet
+        // (writing it directly made the car spin and turn back).
+        if (!_rtHasHeading) {
+          final h = _headingFromToday();
+          if (h != null) _rtSetLockedBearing(h);
+        }
+      } else if (!_liveHeadingKnown) {
         final h = _headingFromToday();
         if (h != null) liveMarkerBearing.value = h;
       }
@@ -4751,6 +4758,7 @@ class VehicleDetailController extends GetxController {
   LatLng? _rtFailedTarget;
   DateTime? _rtFailCooldownUntil;
   LatLng? _rtLastMatchedTarget;
+  DateTime? _rtReverseSince;
 
   static const double _rtSpeedTau = 0.50;
   static const double _rtMaxGlideMs = 45.0;
@@ -4785,6 +4793,7 @@ class VehicleDetailController extends GetxController {
     _rtFailedTarget = null;
     _rtFailCooldownUntil = null;
     _rtLastMatchedTarget = null;
+    _rtReverseSince = null;
   }
 
   // ---------------- GPS intake ----------------
@@ -4839,6 +4848,12 @@ class VehicleDetailController extends GetxController {
       }
       _lastAcceptedGps = location;
       _lastGpsTime = now;
+      // Parked / stopped: a GPS wobble is not movement. Only a real
+      // relocation (far from the car) asks for a road again; otherwise
+      // the car stays put and does not turn.
+      if (previousGps != null && _calculateDistance(_rtPos!, location) < 30.0) {
+        return;
+      }
       _rtTarget = location;
       _rtRequestRoad(location, force: true);
       return;
@@ -4920,7 +4935,14 @@ class VehicleDetailController extends GetxController {
       _rtCreepWhileStopped(dt);
     }
 
-    _rtUpdateHeading(dt);
+    // The car only turns while it is really rolling forward. Standing
+    // still (stopped, or waiting for the next fix) it keeps its heading.
+    final moved = _calculateDistance(pos, _rtPos!) > 0.01;
+    if (moved) {
+      _rtUpdateHeading(dt);
+    } else {
+      _rtUpdateHeadingTurnOnly(dt);
+    }
     _rtUpdateKeepLeft(dt);
     _rtPublish();
   }
@@ -4975,7 +4997,10 @@ class VehicleDetailController extends GetxController {
     final gpsOnRoad = _rtClosestPointOnPolyline(target, _rtCorridor);
     if (_calculateDistance(target, gpsOnRoad) > _rtMaxGpsToRoadM) return;
     final onNow = _rtClosestPointOnPolyline(_rtPos!, _rtCorridor);
-    if (_calculateDistance(_rtPos!, onNow) > 2.0) _rtPos = onNow;
+    if (_calculateDistance(_rtPos!, onNow) > 2.0 &&
+        !(_rtHasHeading && _rtIsBehind(_rtPos!, onNow))) {
+      _rtPos = onNow;
+    }
     final ahead = _rtTrimAhead(_rtPos!, _rtCorridor);
     final limited = _rtTrimToUpdate(ahead, gpsOnRoad);
     if (limited.length < 2) return;
@@ -5015,11 +5040,28 @@ class VehicleDetailController extends GetxController {
       if (ahead != null) {
         if (!_rtHasHeading) {
           _rtSetLockedBearing(ahead);
+        } else if (_rtBearingDelta(_rtLockedBearing, ahead).abs() > 120.0) {
+          // A sudden about-turn is almost always a road point just behind
+          // the car. Accept it only if it is still there after 2 s of
+          // rolling (a real U-turn).
+          final now = DateTime.now();
+          _rtReverseSince ??= now;
+          if (now.difference(_rtReverseSince!).inMilliseconds >= 2000) {
+            _rtLockedBearing = ahead;
+            _rtReverseSince = null;
+          }
         } else {
+          _rtReverseSince = null;
           _rtLockedBearing = ahead;
         }
       }
     }
+    _rtUpdateHeadingTurnOnly(dt);
+  }
+
+  /// Turns the drawn car towards [_rtLockedBearing] (rate limited) without
+  /// picking a new direction.
+  void _rtUpdateHeadingTurnOnly(double dt) {
     if (!_rtHasHeading) return;
     final delta = _rtBearingDelta(_rtUiHeading, _rtLockedBearing);
     final maxStep = _rtMaxHeadingDegPerSec * dt;
@@ -5196,11 +5238,13 @@ class VehicleDetailController extends GetxController {
         _rtFailedTarget = null;
         _rtFailCooldownUntil = null;
         _rtLastMatchedTarget = toPt;
+        // Corridor kept in the direction of travel, so "road ahead" never
+        // points backwards.
+        var prepared = _rtOrientWithTravel(road);
         _rtCorridor
           ..clear()
-          ..addAll(road);
+          ..addAll(prepared);
 
-        var prepared = _rtOrientWithTravel(road);
         prepared = _rtDecimate(prepared, _rtWaypointMinM);
         final trimmed = _rtTrimToUpdate(prepared, toPt);
         if (trimmed.length >= 2) prepared = trimmed;
@@ -5264,10 +5308,36 @@ class VehicleDetailController extends GetxController {
         return;
       }
     }
+    if (_rtHasHeading &&
+        _calculateDistance(published, onNew) > 0.5 &&
+        _rtIsBehind(published, onNew)) {
+      // The new road line starts a little behind the car: do not step
+      // back (that was the back-and-forward). Stay here and continue from
+      // the first road point in front.
+      final fwd = _rtDropBehind(published, ahead);
+      if (fwd.isEmpty) return;
+      _rtQueue
+        ..clear()
+        ..addAll(fwd);
+      return;
+    }
     _rtQueue
       ..clear()
       ..addAll(ahead);
     _rtPos = onNew;
+  }
+
+  /// [path] without its leading points that lie behind [from] (relative to
+  /// the car's heading), within 30 m.
+  List<LatLng> _rtDropBehind(LatLng from, List<LatLng> path) {
+    var i = 0;
+    while (i < path.length &&
+        _calculateDistance(from, path[i]) < 30.0 &&
+        (_calculateDistance(from, path[i]) < 0.5 ||
+            _rtIsBehind(from, path[i]))) {
+      i++;
+    }
+    return path.sublist(i);
   }
 
   bool _rtCanRequest(LatLng to, {required bool force}) {

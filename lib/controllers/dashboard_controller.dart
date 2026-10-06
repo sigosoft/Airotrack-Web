@@ -276,12 +276,16 @@ class DashboardController extends GetxController {
           savedName.toLowerCase() != 'user') {
         updateUserName(savedName);
       } else {
-        debugPrint('==================== [GET PROFILE API CALL (DASHBOARD)] ====================');
+        debugPrint(
+          '==================== [GET PROFILE API CALL (DASHBOARD)] ====================',
+        );
         debugPrint('URL: ${ApiConfig.baseUrl}${ApiEndPoints.profile}');
         final response = await DioClient().get(ApiEndPoints.profile);
         debugPrint('Status Code: ${response.statusCode}');
         debugPrint('Response Data: ${response.data}');
-        debugPrint('============================================================================');
+        debugPrint(
+          '============================================================================',
+        );
         if (response.data != null) {
           final res = response.data;
           String? name;
@@ -305,9 +309,13 @@ class DashboardController extends GetxController {
         }
       }
     } catch (e) {
-      debugPrint('==================== [GET PROFILE ERROR (DASHBOARD)] ====================');
+      debugPrint(
+        '==================== [GET PROFILE ERROR (DASHBOARD)] ====================',
+      );
       debugPrint('Error loading user name: $e');
-      debugPrint('=========================================================================');
+      debugPrint(
+        '=========================================================================',
+      );
     }
   }
 
@@ -614,7 +622,9 @@ class DashboardController extends GetxController {
         _parseAndSetDashboardData(response.data['data']);
       }
     } catch (e) {
+      debugPrint('==================== [DASHBOARD ERROR] ====================');
       debugPrint('Error fetching dashboard data: $e');
+      debugPrint('===========================================================');
     } finally {
       if (!isSilent) isLoading.value = false;
     }
@@ -648,70 +658,117 @@ class DashboardController extends GetxController {
     // Fleet status (counts + backend colours) for the Fleet Status chart
     _parseFleetStatus(data);
 
-    // Parse statistics / fleet_status
-    final stats =
-        data['fleet_status'] ?? data['statistics'] ?? data['summary'] ?? data;
-    int total = 0,
-        running = 0,
-        stopped = 0,
-        idle = 0,
-        inactive = 0,
-        expired = 0,
-        noData = 0;
-    bool expiredSent = false;
+    // Parse statistics / fleet_status if present in dashboard API
+    final rawStats =
+        data['statistics'] ??
+        data['stats'] ??
+        data['vehicle_statistics'] ??
+        data['summary'];
+    int? statTotal,
+        statRunning,
+        statStopped,
+        statIdle,
+        statInactive,
+        statExpired,
+        statNoData;
 
-    if (stats is Map) {
-      total =
-          int.tryParse(
-            stats['total_vehicles']?.toString() ??
-                stats['total']?.toString() ??
-                '',
-          ) ??
-          0;
-      running =
-          int.tryParse(
-            stats['running_vehicles']?.toString() ??
-                stats['running']?.toString() ??
-                '',
-          ) ??
-          0;
-      stopped =
-          int.tryParse(
-            stats['stopped_vehicles']?.toString() ??
-                stats['stopped']?.toString() ??
-                '',
-          ) ??
-          0;
-      idle =
-          int.tryParse(
-            stats['idle_vehicles']?.toString() ??
-                stats['idle']?.toString() ??
-                '',
-          ) ??
-          0;
-      inactive =
-          int.tryParse(
-            stats['inactive_vehicles']?.toString() ??
-                stats['inactive']?.toString() ??
-                '',
-          ) ??
-          0;
-      expiredSent =
-          stats['expired_vehicles'] != null || stats['expired'] != null;
-      expired =
-          int.tryParse(
-            stats['expired_vehicles']?.toString() ??
-                stats['expired']?.toString() ??
-                '',
-          ) ??
-          0;
-      noData =
-          int.tryParse(
-            stats['nodata_vehicles']?.toString() ??
-                stats['no_data']?.toString() ??
-                '',
-          ) ??
-          0;
+    if (rawStats is Map) {
+      int? extract(List<String> keys) {
+        for (final k in keys) {
+          if (rawStats.containsKey(k) && rawStats[k] != null) {
+            final str = rawStats[k].toString().trim();
+            final val = int.tryParse(str);
+            if (val != null) return val;
+          }
+        }
+        return null;
+      }
+
+      statTotal = extract([
+        'total_vehicles',
+        'total',
+        'all_vehicles',
+        'all',
+        'total_count',
+      ]);
+      statRunning = extract([
+        'running_vehicles',
+        'running',
+        'moving_vehicles',
+        'moving',
+        'run',
+      ]);
+      statStopped = extract([
+        'stopped_vehicles',
+        'stopped',
+        'stop_vehicles',
+        'stop',
+        'parked_vehicles',
+        'parked',
+      ]);
+      statIdle = extract([
+        'idle_vehicles',
+        'idle',
+        'idling_vehicles',
+        'idling',
+      ]);
+      statExpired = extract(['expired_vehicles', 'expired']);
+      statInactive = extract([
+        'inactive_vehicles',
+        'inactive',
+        'offline_vehicles',
+        'offline',
+      ]);
+      statNoData = extract([
+        'nodata_vehicles',
+        'no_data_vehicles',
+        'nodata',
+        'no_data',
+      ]);
+    } else if (rawStats is List) {
+      for (final item in rawStats) {
+        if (item is Map) {
+          final label =
+              (item['status'] ??
+                      item['name'] ??
+                      item['title'] ??
+                      item['key'] ??
+                      '')
+                  .toString()
+                  .toLowerCase();
+          final cnt =
+              int.tryParse(
+                (item['count'] ?? item['value'] ?? item['total'] ?? '')
+                    .toString(),
+              ) ??
+              0;
+          if (label.startsWith('run') || label == 'moving')
+            statRunning = cnt;
+          else if (label.startsWith('stop') || label == 'parked')
+            statStopped = cnt;
+          else if (label.startsWith('idl'))
+            statIdle = cnt;
+          else if (label.startsWith('exp'))
+            statExpired = cnt;
+          else if (label.startsWith('inact') || label == 'offline')
+            statInactive = cnt;
+          else if (label.startsWith('tot') || label == 'all')
+            statTotal = cnt;
+        }
+      }
+    }
+
+    if (statTotal != null)
+      homeController.totalCount.value = statTotal.toString();
+    if (statRunning != null)
+      homeController.runningCount.value = statRunning.toString();
+    if (statStopped != null)
+      homeController.stoppedCount.value = statStopped.toString();
+    if (statIdle != null) homeController.idleCount.value = statIdle.toString();
+    final statExp = statExpired ?? statInactive;
+    if (statExp != null) {
+      homeController.expiredCount.value = statExp.toString();
+      homeController.inactiveCount.value = statExp.toString();
     }
 
     // Engine hours
@@ -862,38 +919,40 @@ class DashboardController extends GetxController {
       }
     }
 
+    final total =
+        statTotal ??
+        int.tryParse(homeController.totalCount.value) ??
+        homeController.vehicles.length;
+    final running =
+        statRunning ??
+        int.tryParse(homeController.runningCount.value) ??
+        homeController.vehicles.where((v) => v.status == 'Running').length;
+    final stopped =
+        statStopped ??
+        int.tryParse(homeController.stoppedCount.value) ??
+        homeController.vehicles.where((v) => v.status == 'Stopped').length;
+    final idle =
+        statIdle ??
+        int.tryParse(homeController.idleCount.value) ??
+        homeController.vehicles.where((v) => v.status == 'Idle').length;
+    final inactive =
+        statInactive ??
+        int.tryParse(homeController.inactiveCount.value) ??
+        homeController.vehicles.where((v) => v.status == 'Inactive').length;
+    final expired =
+        statExpired ??
+        int.tryParse(homeController.expiredCount.value) ??
+        inactive;
+    final noData = statNoData ?? 0;
+
     dashboardData.value = DashboardModel(
       userName: name,
       summaryList: _buildSummaryList(
-        total: total > 0
-            ? total
-            : (int.tryParse(homeController.totalCount.value) ??
-                  homeController.vehicles.length),
-        running: running > 0
-            ? running
-            : (int.tryParse(homeController.runningCount.value) ??
-                  homeController.vehicles
-                      .where((v) => v.status == 'Running')
-                      .length),
-        idle: idle > 0
-            ? idle
-            : (int.tryParse(homeController.idleCount.value) ??
-                  homeController.vehicles
-                      .where((v) => v.status == 'Idle')
-                      .length),
-        stopped: stopped > 0
-            ? stopped
-            : (int.tryParse(homeController.stoppedCount.value) ??
-                  homeController.vehicles
-                      .where((v) => v.status == 'Stopped')
-                      .length),
-        expired: expiredSent
-            ? expired
-            : (inactive > 0
-                  ? inactive
-                  : (int.tryParse(homeController.expiredCount.value) ??
-                        int.tryParse(homeController.inactiveCount.value) ??
-                        0)),
+        total: total,
+        running: running,
+        idle: idle,
+        stopped: stopped,
+        expired: expired,
         inactive: inactive,
         noData: noData,
       ),

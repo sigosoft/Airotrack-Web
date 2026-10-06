@@ -36,6 +36,7 @@ class DioClient {
             final tag = _endpointTag(options.path);
             debugPrint('==================== [$tag CALL] ====================');
             debugPrint('${options.method.toUpperCase()} ${options.uri}');
+            debugPrint('Headers: ${options.headers}');
             if (options.queryParameters.isNotEmpty) {
               debugPrint('Query Parameters: ${options.queryParameters}');
             }
@@ -78,9 +79,16 @@ class DioClient {
             );
             debugPrint('URL: ${e.requestOptions.uri}');
             debugPrint('Status Code: ${e.response?.statusCode}');
+            debugPrint('Headers: ${e.requestOptions.headers}');
             debugPrint('Error: ${e.message}');
             if (e.response?.data != null) {
-              debugPrint('Error Data: ${e.response?.data}');
+              try {
+                debugPrint(
+                  'Error Data:\n${const JsonEncoder.withIndent('  ').convert(e.response?.data)}',
+                );
+              } catch (_) {
+                debugPrint('Error Data: ${e.response?.data}');
+              }
             }
             debugPrint(
               '======================================================',
@@ -94,11 +102,13 @@ class DioClient {
 
   static bool _shouldLog(String path) {
     if (path.contains(ApiEndPoints.profile)) return true;
+    if (path.contains(ApiEndPoints.dashboard)) return true;
     return false;
   }
 
   static String _endpointTag(String path) {
     if (path.contains(ApiEndPoints.profile)) return 'PROFILE';
+    if (path.contains(ApiEndPoints.dashboard)) return 'DASHBOARD';
     return 'API';
   }
 
@@ -106,6 +116,9 @@ class DioClient {
 
   Future<void> updateToken(String token) async {
     _token = token;
+    debugPrint('==================== [AUTH TOKEN] ====================');
+    debugPrint('Token: $token');
+    debugPrint('======================================================');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);
   }
@@ -117,7 +130,13 @@ class DioClient {
 
   Future<String?> _loadToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    final token = prefs.getString('token');
+    if (token != null && token.isNotEmpty) {
+      debugPrint('==================== [AUTH TOKEN] ====================');
+      debugPrint('Token: $token');
+      debugPrint('======================================================');
+    }
+    return token;
   }
 
   Future<void> clearToken() async {

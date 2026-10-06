@@ -226,7 +226,10 @@ class Vehicle {
       return 'Running';
     }
     if (m == 'H' || m == 'I' || m == 'IDLE') return 'Idle';
-    if (m == 'S' || m == 'STOPPED' || m == 'STOP') return 'Stopped';
+    if (m == 'S' || m == 'STOPPED' || m == 'STOP') {
+      if (ignition) return 'Idle';
+      return 'Stopped';
+    }
 
     // Fallback when mode is missing.
     if (speed > 1.0) return 'Running';

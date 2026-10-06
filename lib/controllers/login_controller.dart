@@ -183,6 +183,9 @@ class LoginController extends GetxController {
         }
 
         if (token != null && token.isNotEmpty) {
+          debugPrint('==================== [LOGIN TOKEN] ====================');
+          debugPrint('Token: $token');
+          debugPrint('=======================================================');
           await DioClient().updateToken(token);
           final prefs = await SharedPreferences.getInstance();
           final savedName = (displayName != null && displayName.isNotEmpty)

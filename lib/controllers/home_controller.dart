@@ -147,18 +147,60 @@ class HomeController extends GetxController {
           vehicles.clear();
           hasMore.value = false;
         }
-        if (data['statistics'] != null) {
-          final stats = data['statistics'];
-          totalCount.value = stats['total_vehicles']?.toString() ?? "0";
-          runningCount.value = stats['running_vehicles']?.toString() ?? "0";
-          idleCount.value = stats['idle_vehicles']?.toString() ?? "0";
-          stoppedCount.value = stats['stopped_vehicles']?.toString() ?? "0";
-          final exp = (stats['expired_vehicles'] ?? stats['inactive_vehicles'])
-                  ?.toString() ??
-              "0";
-          expiredCount.value = exp;
-          inactiveCount.value = exp;
-        } else {
+        final rawStats = data['statistics'] ??
+            data['stats'] ??
+            data['vehicle_statistics'] ??
+            data['summary'];
+
+        if (rawStats is Map) {
+          int? extract(List<String> keys) {
+            for (final k in keys) {
+              if (rawStats.containsKey(k) && rawStats[k] != null) {
+                final str = rawStats[k].toString().trim();
+                final val = int.tryParse(str);
+                if (val != null) return val;
+              }
+            }
+            return null;
+          }
+
+          final total = extract(['total_vehicles', 'total', 'all_vehicles', 'all', 'total_count']);
+          final running = extract(['running_vehicles', 'running', 'moving_vehicles', 'moving', 'run']);
+          final stopped = extract(['stopped_vehicles', 'stopped', 'stop_vehicles', 'stop', 'parked_vehicles', 'parked']);
+          final idle = extract(['idle_vehicles', 'idle', 'idling_vehicles', 'idling']);
+          final expired = extract(['expired_vehicles', 'expired']);
+          final inactive = extract(['inactive_vehicles', 'inactive', 'offline_vehicles', 'offline']);
+
+          if (total != null) totalCount.value = total.toString();
+          if (running != null) runningCount.value = running.toString();
+          if (stopped != null) stoppedCount.value = stopped.toString();
+          if (idle != null) idleCount.value = idle.toString();
+          final exp = expired ?? inactive;
+          if (exp != null) {
+            expiredCount.value = exp.toString();
+            inactiveCount.value = exp.toString();
+          }
+        } else if (rawStats is List) {
+          int total = 0, running = 0, stopped = 0, idle = 0, exp = 0;
+          for (final item in rawStats) {
+            if (item is Map) {
+              final label = (item['status'] ?? item['name'] ?? item['title'] ?? item['key'] ?? '').toString().toLowerCase();
+              final cnt = int.tryParse((item['count'] ?? item['value'] ?? item['total'] ?? '').toString()) ?? 0;
+              if (label.startsWith('run') || label == 'moving') running = cnt;
+              else if (label.startsWith('stop') || label == 'parked') stopped = cnt;
+              else if (label.startsWith('idl')) idle = cnt;
+              else if (label.startsWith('exp') || label.startsWith('inact')) exp = cnt;
+              else if (label.startsWith('tot') || label == 'all') total = cnt;
+            }
+          }
+          if (total == 0) total = running + stopped + idle + exp;
+          totalCount.value = total.toString();
+          runningCount.value = running.toString();
+          stoppedCount.value = stopped.toString();
+          idleCount.value = idle.toString();
+          expiredCount.value = exp.toString();
+          inactiveCount.value = exp.toString();
+        } else if (selectedType.value == null && (totalCount.value.isEmpty || totalCount.value == '0')) {
           totalCount.value = vehicles.length.toString();
           runningCount.value = vehicles
               .where((v) => v.status == 'Running')
