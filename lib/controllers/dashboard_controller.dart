@@ -455,14 +455,14 @@ class DashboardController extends GetxController {
       VehicleStatusSummary(
         title: 'Idle',
         count: idle,
-        colorHex: 0xFFF57C00,
-        lightBgHex: 0xFFFFF8E1,
+        colorHex: 0xFFFBBC05, // yellow
+        lightBgHex: 0xFFFFFDE7,
       ),
       VehicleStatusSummary(
         title: 'Expired',
         count: expired,
-        colorHex: 0xFFE65100,
-        lightBgHex: 0xFFFBE9E7,
+        colorHex: 0xFFF58A2E, // orange
+        lightBgHex: 0xFFFFF3E0,
       ),
       VehicleStatusSummary(
         title: 'Inactive',
