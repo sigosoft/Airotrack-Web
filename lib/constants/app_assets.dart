@@ -4,8 +4,18 @@ class AppAssets {
   static const String logo = 'lib/assets/images/Logo.png';
   static const String background = 'lib/assets/images/Background.png';
   static const String greenCar = 'lib/assets/images/Green Car.png';
-  static const String greenCarTop = 'lib/assets/images/green_car_top.png';
+  static const String greenRightCar = 'lib/assets/images/Green right Car.png';
+  static const String idleYellowRightCar =
+      'lib/assets/images/Idle_yellow_rightcar.png';
   static const String redCar = 'lib/assets/images/Red Car.png';
+  static const String redRightCar = 'lib/assets/images/Red right Car.png';
+  static const String expiredOrangeRightCar =
+      'lib/assets/images/Expired_GlossyOrange_rightcar.png';
+  static const String inactiveBlueRightCar =
+      'lib/assets/images/Inactive_blue_rightcar.png';
+  static const String noDataGreyRightCar =
+      'lib/assets/images/No data_grey_rightcar.png';
+  static const String greenCarTop = 'lib/assets/images/green_car_top.png';
   static const String accuracy = 'lib/assets/images/Accuracy.png';
   static const String altitude = 'lib/assets/images/Distance copy.png';
   static const String avgSpeed = 'lib/assets/images/Avg speed.png';
@@ -70,6 +80,8 @@ class AppAssets {
   // Sidebar Menu & Expenses Assets
   static const String sidebarDashboard = 'lib/assets/images/Dashboard.png';
   static const String sidebarTracking = 'lib/assets/images/Tracking.png';
+  static const String sidebarLocations =
+      'lib/assets/images/location_outlined.png';
   static const String sidebarReports = 'lib/assets/images/Report.png';
   static const String sidebarExpenses = 'lib/assets/images/Expenses.png';
   static const String sidebarGeofence = 'lib/assets/images/Geofence report.png';

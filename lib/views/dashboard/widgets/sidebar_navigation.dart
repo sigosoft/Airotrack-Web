@@ -25,6 +25,7 @@ class SidebarNavigation extends StatelessWidget {
     final menuItems = [
       {'title': 'Dashboard', 'asset': AppAssets.sidebarDashboard, 'hasDropdown': false},
       {'title': 'Tracking', 'asset': AppAssets.sidebarTracking, 'hasDropdown': false},
+      {'title': 'Locations', 'asset': AppAssets.sidebarLocations, 'hasDropdown': false},
       {'title': 'Reports', 'asset': AppAssets.sidebarReports, 'hasDropdown': true},
       {'title': 'Expenses', 'asset': AppAssets.sidebarExpenses, 'hasDropdown': false},
       {'title': 'Geofence', 'asset': AppAssets.sidebarGeofence, 'hasDropdown': false},
@@ -56,18 +57,18 @@ class SidebarNavigation extends StatelessWidget {
               final isSelected = selectedIndex == index;
               final item = menuItems[index];
 
-              if (index == 2) {
+              if (index == 3) {
                 // Reports Menu Item with Expandable Sub-items
                 return Obx(() {
                   final isExpanded = controller.isReportsExpanded.value;
-                  final isReportsSelected = selectedIndex == 2;
+                  final isReportsSelected = selectedIndex == 3;
 
                   return Column(
                     children: [
                       InkWell(
                         onTap: () {
                           controller.toggleReportsExpand();
-                          onItemSelected(2);
+                          onItemSelected(3);
                         },
                         child: Container(
                           height: 44,
@@ -92,6 +93,7 @@ class SidebarNavigation extends StatelessWidget {
                                 item['asset'] as String,
                                 width: 20,
                                 height: 20,
+                                color: item['iconColor'] as Color?,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -186,6 +188,7 @@ class SidebarNavigation extends StatelessWidget {
                         item['asset'] as String,
                         width: 20,
                         height: 20,
+                        color: item['iconColor'] as Color?,
                       ),
                       const SizedBox(width: 10),
                       Expanded(

@@ -243,7 +243,6 @@ class DashboardController extends GetxController {
 
     ever(homeController.vehicles, (_) {
       _updateDashboardData();
-      fetchDashboardApi();
     });
     ever(homeController.totalCount, (_) => _updateDashboardData());
     ever(homeController.runningCount, (_) => _updateDashboardData());
@@ -330,6 +329,13 @@ class DashboardController extends GetxController {
     );
   }
 
+  int? _fleetCountFor(String key) {
+    for (final f in fleetStatus) {
+      if (f['key'] == key) return f['count'] as int?;
+    }
+    return null;
+  }
+
   void _updateDashboardData({bool forceIndexSelection = false}) {
     final total =
         int.tryParse(homeController.totalCount.value) ??
@@ -344,11 +350,20 @@ class DashboardController extends GetxController {
         int.tryParse(homeController.idleCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Idle').length;
     final inactive =
+        _fleetCountFor('inactive') ??
         int.tryParse(homeController.inactiveCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Inactive').length;
     // Expired count; the Home list may not send one, then inactive vehicles
     // are the expired ones (same rule the Fleet Status chart used).
-    final expired = int.tryParse(homeController.expiredCount.value) ?? inactive;
+    final expired =
+        _fleetCountFor('expired') ??
+        int.tryParse(homeController.expiredCount.value) ??
+        inactive;
+    final noData =
+        _fleetCountFor('nodata') ??
+        homeController.vehicles
+            .where((v) => v.status == 'No Data' || v.status == 'NoData')
+            .length;
 
     List<VehicleItem> items = [];
 
@@ -373,7 +388,7 @@ class DashboardController extends GetxController {
         stopped: stopped,
         expired: expired,
         inactive: inactive,
-        noData: 0,
+        noData: noData,
       ),
       vehicleList: items.isNotEmpty ? items : dashboardData.value.vehicleList,
       engineHoursData: dashboardData.value.engineHoursData,
@@ -406,10 +421,8 @@ class DashboardController extends GetxController {
   }
 
   /// Dashboard status cards, in this order:
-  /// All Vehicles, Running, Stopped, Idle, Expired.
-  /// "In Active" and "No Data" are hidden (kept here, not shown) - set
-  /// [_hiddenStatusCards] to show them again.
-  static const Set<String> _hiddenStatusCards = {'In Active', 'No Data'};
+  /// All Vehicles, Running, Stopped, Idle, Expired, Inactive, No Data.
+  static const Set<String> _hiddenStatusCards = <String>{};
 
   static List<VehicleStatusSummary> _buildSummaryList({
     required int total,
@@ -452,15 +465,15 @@ class DashboardController extends GetxController {
         lightBgHex: 0xFFFBE9E7,
       ),
       VehicleStatusSummary(
-        title: 'In Active',
+        title: 'Inactive',
         count: inactive,
-        colorHex: 0xFF0288D1,
-        lightBgHex: 0xFFE1F5FE,
+        colorHex: 0xFF4285F4, // blue color
+        lightBgHex: 0xFFE8F0FE,
       ),
       VehicleStatusSummary(
         title: 'No Data',
         count: noData,
-        colorHex: 0xFF757575,
+        colorHex: 0xFF9E9E9E, // light grey color
         lightBgHex: 0xFFF5F5F5,
       ),
     ];
@@ -496,7 +509,7 @@ class DashboardController extends GetxController {
 
   void selectReportSub(int index) {
     selectedReportSubIndex.value = index;
-    selectedMenuIndex.value = 2; // Reports menu
+    selectedMenuIndex.value = 3; // Reports menu
     if (index == 0) {
       fetchIgnitionReports();
     } else if (index == 1) {
@@ -742,18 +755,25 @@ class DashboardController extends GetxController {
                     .toString(),
               ) ??
               0;
-          if (label.startsWith('run') || label == 'moving')
+          if (label.startsWith('run') || label == 'moving') {
             statRunning = cnt;
-          else if (label.startsWith('stop') || label == 'parked')
+          } else if (label.startsWith('stop') || label == 'parked') {
             statStopped = cnt;
-          else if (label.startsWith('idl'))
+          } else if (label.startsWith('idl')) {
             statIdle = cnt;
-          else if (label.startsWith('exp'))
+          } else if (label.startsWith('exp')) {
             statExpired = cnt;
-          else if (label.startsWith('inact') || label == 'offline')
+          } else if (label.startsWith('inact') || label == 'offline') {
             statInactive = cnt;
-          else if (label.startsWith('tot') || label == 'all')
+          } else if (label.startsWith('nodata') ||
+              label.startsWith('no_data') ||
+              label.startsWith('no data') ||
+              label == 'nogps' ||
+              label == 'nosignal') {
+            statNoData = cnt;
+          } else if (label.startsWith('tot') || label == 'all') {
             statTotal = cnt;
+          }
         }
       }
     }
@@ -850,11 +870,24 @@ class DashboardController extends GetxController {
       ];
     }
 
-    // Vehicles list
+    // Vehicles list: prioritize live vehicles from HomeController to prevent status conflicts
     List<VehicleItem> vehicleItems = [];
     final rawVehicles =
         data['vehicles'] ?? data['vehicle_list'] ?? data['vehicles_data'];
-    if (rawVehicles is List) {
+
+    if (homeController.vehicles.isNotEmpty) {
+      for (int i = 0; i < homeController.vehicles.length; i++) {
+        final v = homeController.vehicles[i];
+        final name = v.plateNumber.isNotEmpty ? v.plateNumber : v.deviceId;
+        vehicleItems.add(
+          VehicleItem(
+            registrationNumber: name,
+            status: v.status,
+            isSelected: i == selectedVehicleIndex.value,
+          ),
+        );
+      }
+    } else if (rawVehicles is List) {
       for (int i = 0; i < rawVehicles.length; i++) {
         final item = rawVehicles[i];
         if (item is Map) {
@@ -870,7 +903,7 @@ class DashboardController extends GetxController {
           final st =
               item['status']?.toString() ??
               item['current_status']?.toString() ??
-              'Running';
+              'Stopped';
           vehicleItems.add(
             VehicleItem(
               registrationNumber: reg,
@@ -879,21 +912,6 @@ class DashboardController extends GetxController {
             ),
           );
         }
-      }
-    }
-
-    // Fallback if vehicleItems is empty
-    if (vehicleItems.isEmpty && homeController.vehicles.isNotEmpty) {
-      for (int i = 0; i < homeController.vehicles.length; i++) {
-        final v = homeController.vehicles[i];
-        final name = v.plateNumber.isNotEmpty ? v.plateNumber : v.deviceId;
-        vehicleItems.add(
-          VehicleItem(
-            registrationNumber: name,
-            status: v.status,
-            isSelected: i == selectedVehicleIndex.value,
-          ),
-        );
       }
     }
 
@@ -937,13 +955,20 @@ class DashboardController extends GetxController {
         homeController.vehicles.where((v) => v.status == 'Idle').length;
     final inactive =
         statInactive ??
+        _fleetCountFor('inactive') ??
         int.tryParse(homeController.inactiveCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Inactive').length;
     final expired =
         statExpired ??
+        _fleetCountFor('expired') ??
         int.tryParse(homeController.expiredCount.value) ??
         inactive;
-    final noData = statNoData ?? 0;
+    final noData =
+        statNoData ??
+        _fleetCountFor('nodata') ??
+        homeController.vehicles
+            .where((v) => v.status == 'No Data' || v.status == 'NoData')
+            .length;
 
     dashboardData.value = DashboardModel(
       userName: name,

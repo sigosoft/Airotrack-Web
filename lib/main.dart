@@ -14,6 +14,7 @@ import 'views/register_view.dart';
 import 'views/reminder/add_reminder_view.dart';
 import 'views/tracking/tracking_view.dart';
 import 'views/tracking/vehicle_detail_map_view.dart';
+import 'views/location/location_view.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -91,6 +92,9 @@ class AirotrackApp extends StatelessWidget {
         GetPage(name: '/DashboardView', page: () => const DashboardView()),
         GetPage(name: '/tracking', page: () => const TrackingView()),
         GetPage(name: '/TrackingView', page: () => const TrackingView()),
+        GetPage(name: '/location', page: () => const LocationView()),
+        GetPage(name: '/locations', page: () => const LocationView()),
+        GetPage(name: '/LocationView', page: () => const LocationView()),
         GetPage(name: '/notification', page: () => const NotificationView()),
         GetPage(
           name: '/NotificationView',

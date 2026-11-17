@@ -9,6 +9,8 @@ import '../models/vehicle_model.dart';
 
 class HomeController extends GetxController {
   final vehicles = <Vehicle>[].obs;
+  RxList<Vehicle> get allVehicles => vehicles;
+  Future<void> refreshSilently() => fetchVehicles(isSilent: true);
   final isLoading = false.obs;
   final isMoreLoading = false.obs;
   final hasMore = true.obs;

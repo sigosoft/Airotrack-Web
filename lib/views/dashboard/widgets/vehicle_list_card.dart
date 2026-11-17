@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../constants/app_assets.dart';
 import '../../../models/dashboard_model.dart';
 
 class VehicleListCard extends StatelessWidget {
@@ -65,7 +66,7 @@ class VehicleListCard extends StatelessWidget {
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
+                          horizontal: 14,
                           vertical: 10,
                         ),
                         margin: const EdgeInsets.only(bottom: 6),
@@ -73,19 +74,42 @@ class VehicleListCard extends StatelessWidget {
                           color: isSelected
                               ? const Color(0xFFE0F2FE)
                               : Colors.transparent,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(6),
+                          border: isSelected
+                              ? Border.all(
+                                  color: const Color(0xFF0077C5)
+                                      .withValues(alpha: 0.3),
+                                  width: 1,
+                                )
+                              : null,
                         ),
-                        child: Text(
-                          item.registrationNumber,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: isSelected
-                                ? const Color(0xFF1D2939)
-                                : const Color(0xFF475467),
-                          ),
+                        child: Row(
+                          children: [
+                            Image.asset(
+                              AppAssets.carImage,
+                              width: 22,
+                              height: 22,
+                              color: isSelected
+                                  ? const Color(0xFF0077C5)
+                                  : const Color(0xFF667085),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                item.registrationNumber,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: isSelected
+                                      ? const Color(0xFF1D2939)
+                                      : const Color(0xFF475467),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );

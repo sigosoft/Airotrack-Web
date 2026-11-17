@@ -14,7 +14,8 @@ class VehicleStatusCards extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final useHorizontalScroll = isMobile || constraints.maxWidth < 650;
+        final minWidth = summaryList.length * 105.0;
+        final useHorizontalScroll = isMobile || constraints.maxWidth < minWidth;
 
         if (useHorizontalScroll) {
           return SingleChildScrollView(
@@ -25,7 +26,7 @@ class VehicleStatusCards extends StatelessWidget {
                 final color = Color(item.colorHex);
 
                 return Container(
-                  width: 86,
+                  width: 90,
                   margin: const EdgeInsets.only(right: 8),
                   padding: const EdgeInsets.symmetric(
                     vertical: 10,
@@ -59,6 +60,7 @@ class VehicleStatusCards extends StatelessWidget {
                         ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       // Count
@@ -87,7 +89,7 @@ class VehicleStatusCards extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 padding: const EdgeInsets.symmetric(
                   vertical: 10,
-                  horizontal: 8,
+                  horizontal: 6,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -117,6 +119,7 @@ class VehicleStatusCards extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                       maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     // Count

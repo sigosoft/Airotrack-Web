@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import '../../../constants/app_assets.dart';
-import '../../../controllers/home_controller.dart';
-import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../models/tracking_model.dart';
 import '../../../utils/custom_media_query.dart';
-import '../vehicle_detail_map_view.dart';
 import 'vehicle_action_dialog.dart';
 
 class TrackingCard extends StatelessWidget {
@@ -17,17 +13,24 @@ class TrackingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = CustomMediaQuery.isMobile(context);
-    final isIdle = data.status.trim().toUpperCase() == 'IDLE';
-    final isExpired =
-        data.status.trim().toUpperCase() == 'EXPIRED' ||
-        data.status.trim().toUpperCase() == 'INACTIVE';
+    final sUpper = data.status.trim().toUpperCase();
+    final isIdle = sUpper == 'IDLE' || sUpper.contains('IDL');
+    final isInactive = sUpper == 'INACTIVE' ||
+        sUpper.contains('INACT') ||
+        sUpper == 'OFFLINE';
+    final isExpired = sUpper == 'EXPIRED' || sUpper.contains('EXPIR');
+    final isRunning =
+        data.isGreenVehicle || sUpper == 'RUNNING' || sUpper.contains('RUN');
+
     final statusColor = isIdle
-        ? const Color(0xFFF57C00)
-        : (isExpired
-              ? const Color(0xFFE65100)
-              : (data.isGreenVehicle
+        ? const Color(0xFFFFD600)
+        : (isInactive
+            ? const Color(0xFF2196F3)
+            : (isExpired
+                ? const Color(0xFFFF9100)
+                : (isRunning
                     ? const Color(0xFF00A859)
-                    : const Color(0xFFE53935)));
+                    : const Color(0xFFE53935))));
 
     return Container(
       decoration: BoxDecoration(
@@ -78,12 +81,26 @@ class TrackingCard extends StatelessWidget {
                         children: [
                           const SizedBox(height: 6),
                           Image.asset(
-                            data.isGreenVehicle
-                                ? AppAssets.greenCar
-                                : AppAssets.redCar,
+                            isIdle
+                                ? AppAssets.idleYellowRightCar
+                                : (isInactive
+                                    ? AppAssets.inactiveBlueRightCar
+                                    : (isExpired
+                                        ? AppAssets.expiredOrangeRightCar
+                                        : (isRunning
+                                            ? AppAssets.greenCar
+                                            : AppAssets.redCar))),
                             width: 125,
                             height: 68,
                             fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => Image.asset(
+                              isRunning
+                                  ? AppAssets.greenCar
+                                  : AppAssets.redCar,
+                              width: 125,
+                              height: 68,
+                              fit: BoxFit.contain,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           Text(

@@ -21,6 +21,7 @@ import 'widgets/travel_distance_chart.dart';
 import 'widgets/trip_reports_view.dart';
 import 'widgets/vehicle_list_card.dart';
 import 'widgets/vehicle_status_cards.dart';
+import '../location/location_view.dart';
 
 class DashboardView extends StatelessWidget {
   const DashboardView({super.key});
@@ -87,6 +88,11 @@ class DashboardView extends StatelessWidget {
                     final selectedIndex = controller.selectedMenuIndex.value;
 
                     if (selectedIndex == 2) {
+                      // --- Locations Screen Body ---
+                      return const LocationView();
+                    }
+
+                    if (selectedIndex == 3) {
                       // --- Reports Screen Body ---
                       final subIndex = controller.selectedReportSubIndex.value;
                       if (subIndex == 6) {
@@ -110,12 +116,12 @@ class DashboardView extends StatelessWidget {
                       return const IgnitionReportsView();
                     }
 
-                    if (selectedIndex == 4) {
+                    if (selectedIndex == 5) {
                       // --- Geofence Screen Body ---
                       return const GeofenceView();
                     }
 
-                    if (selectedIndex == 3) {
+                    if (selectedIndex == 4) {
                       // --- Expenses Screen Body ---
                       return const ExpensesView();
                     }
