@@ -778,13 +778,18 @@ class DashboardController extends GetxController {
       }
     }
 
-    if (statTotal != null)
+    if (statTotal != null) {
       homeController.totalCount.value = statTotal.toString();
-    if (statRunning != null)
+    }
+    if (statRunning != null) {
       homeController.runningCount.value = statRunning.toString();
-    if (statStopped != null)
+    }
+    if (statStopped != null) {
       homeController.stoppedCount.value = statStopped.toString();
-    if (statIdle != null) homeController.idleCount.value = statIdle.toString();
+    }
+    if (statIdle != null) {
+      homeController.idleCount.value = statIdle.toString();
+    }
     final statExp = statExpired ?? statInactive;
     if (statExp != null) {
       homeController.expiredCount.value = statExp.toString();
