@@ -15,6 +15,16 @@ class OverSpeedReportsView extends StatefulWidget {
 class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
   int _selectedPage = 1;
 
+  /// The rows of the selected page (10 per page). The API sends every row
+  /// at once, so changing page needs no new request.
+  List<Map<String, dynamic>> _pageOf(List<Map<String, dynamic>> all) {
+    if (all.isEmpty) return const [];
+    final pages = (all.length / 10).ceil();
+    final page = _selectedPage.clamp(1, pages);
+    final start = (page - 1) * 10;
+    return all.sublist(start, (start + 10).clamp(0, all.length));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -242,7 +252,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                           return GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: reportsList.length,
+                            itemCount: _pageOf(reportsList).length,
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: crossAxisCount,
@@ -251,7 +261,7 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                               mainAxisExtent: maxWidth < 768 ? 120 : 108,
                             ),
                             itemBuilder: (context, index) {
-                              final item = reportsList[index];
+                              final item = _pageOf(reportsList)[index];
                               return _buildOverSpeedCard(item);
                             },
                           );
@@ -273,7 +283,6 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                                     setState(() {
                                       _selectedPage = i;
                                     });
-                                    controller.fetchOverSpeedReports(page: i);
                                   },
                                   borderRadius: BorderRadius.circular(14),
                                   child: Container(
@@ -311,9 +320,6 @@ class _OverSpeedReportsViewState extends State<OverSpeedReportsView> {
                                       setState(() {
                                         _selectedPage++;
                                       });
-                                      controller.fetchOverSpeedReports(
-                                        page: _selectedPage,
-                                      );
                                     }
                                   },
                                   child: const Text(

@@ -538,24 +538,51 @@ class DashboardController extends GetxController {
   void selectReportSub(int index) {
     selectedReportSubIndex.value = index;
     selectedMenuIndex.value = 3; // Reports menu
-    if (index == 0) {
-      fetchIgnitionReports();
-    } else if (index == 1) {
-      fetchStoppageReports();
-    } else if (index == 2) {
-      fetchTripReports();
-    } else if (index == 3) {
-      fetchDailyReports();
-    } else if (index == 4) {
-      fetchSummaryReports();
-    } else if (index == 5) {
-      fetchOverSpeedReports();
-    } else if (index == 6) {
-      fetchGeofenceReports();
-    } else if (index == 7) {
-      fetchAlertReports();
-    }
+    // Each report screen loads its data when it opens. Fetching here as
+    // well sent every report request twice at the same time.
   }
+
+  // ---------------------------------------------------------------------
+  // Report requests: one request per report, cached for a short time.
+  // The reports API returns every row at once (up to 500) and ignores
+  // `page`, so the screens page through the rows themselves and a page
+  // click needs no new request.
+  // ---------------------------------------------------------------------
+  static const Duration _reportCacheTtl = Duration(minutes: 3);
+  final Map<String, (DateTime, dynamic)> _reportCache = {};
+  final Map<String, Future<dynamic>> _reportInFlight = {};
+
+  Future<dynamic> _reportGet(String path, Map<String, dynamic> query) {
+    final q = Map<String, dynamic>.from(query)..remove('page');
+    final imei = (q['imei'] ?? '').toString();
+    // Odometer offset (used when parsing) loads alongside the report
+    // instead of after it.
+    if (imei.isNotEmpty) unawaited(OdometerOffsetService.offsetFor(imei));
+    final key = '$path?${(q.entries.toList()..sort((a, b) => a.key.compareTo(b.key))).map((e) => '${e.key}=${e.value}').join('&')}';
+    final hit = _reportCache[key];
+    if (hit != null && DateTime.now().difference(hit.$1) < _reportCacheTtl) {
+      return Future.value(hit.$2);
+    }
+    final running = _reportInFlight[key];
+    if (running != null) return running;
+    final future = DioClient()
+        .get(path, queryParameters: q)
+        .then((response) {
+          final ok =
+              response.statusCode == 200 &&
+              response.data is Map &&
+              (response.data['status'] == true ||
+                  response.data['status'] == 'true');
+          if (ok) _reportCache[key] = (DateTime.now(), response);
+          return response as dynamic;
+        })
+        .whenComplete(() => _reportInFlight.remove(key));
+    _reportInFlight[key] = future;
+    return future;
+  }
+
+  /// Forget cached reports (e.g. after the vehicle's odometer changed).
+  void clearReportCache() => _reportCache.clear();
 
   /// GET reports/alerts?imei&from_date&to_date&limit for the selected
   /// vehicle. The API has no paging (it returns up to `limit` rows, newest
@@ -577,9 +604,9 @@ class DashboardController extends GetxController {
         alertReportTotal.value = 0;
         return;
       }
-      final response = await DioClient().get(
+      final response = await _reportGet(
         ApiEndPoints.alertsReport,
-        queryParameters: {
+        {
           'imei': imei,
           'from_date': reportStartDate.value,
           'to_date': reportEndDate.value,
@@ -1140,10 +1167,7 @@ class DashboardController extends GetxController {
         queryParams['to_date'] = reqToDate;
       }
 
-      final response = await DioClient().get(
-        ApiEndPoints.ignitionReport,
-        queryParameters: queryParams,
-      );
+      final response = await _reportGet(ApiEndPoints.ignitionReport, queryParams);
 
       if (response.data != null) {
         final resData =
@@ -1333,10 +1357,7 @@ class DashboardController extends GetxController {
 
       dynamic response;
       try {
-        response = await DioClient().get(
-          ApiEndPoints.stoppageReport,
-          queryParameters: queryParams,
-        );
+        response = await _reportGet(ApiEndPoints.stoppageReport, queryParams);
       } catch (e) {
         // Fallback retry with alternate path if stoppageReport returned 404
         debugPrint(
@@ -1532,10 +1553,7 @@ class DashboardController extends GetxController {
         queryParams['to_date'] = reqToDate;
       }
 
-      final response = await DioClient().get(
-        ApiEndPoints.tripReport,
-        queryParameters: queryParams,
-      );
+      final response = await _reportGet(ApiEndPoints.tripReport, queryParams);
 
       if (response.data != null) {
         final resData =
@@ -1734,10 +1752,7 @@ class DashboardController extends GetxController {
         queryParams['to_date'] = reqToDate;
       }
 
-      final response = await DioClient().get(
-        ApiEndPoints.dailyReport,
-        queryParameters: queryParams,
-      );
+      final response = await _reportGet(ApiEndPoints.dailyReport, queryParams);
 
       if (response.data != null) {
         final resData =
@@ -2090,10 +2105,7 @@ class DashboardController extends GetxController {
         queryParams['to_date'] = reqToDate;
       }
 
-      final response = await DioClient().get(
-        ApiEndPoints.summaryReport,
-        queryParameters: queryParams,
-      );
+      final response = await _reportGet(ApiEndPoints.summaryReport, queryParams);
 
       if (response.data != null) {
         final resData =
@@ -2419,10 +2431,7 @@ class DashboardController extends GetxController {
         queryParams['to_date'] = reqToDate;
       }
 
-      final response = await DioClient().get(
-        ApiEndPoints.overspeedReport,
-        queryParameters: queryParams,
-      );
+      final response = await _reportGet(ApiEndPoints.overspeedReport, queryParams);
 
       if (response.data != null) {
         final resData =
@@ -2617,10 +2626,7 @@ class DashboardController extends GetxController {
         queryParams['to_date'] = reqToDate;
       }
 
-      final response = await DioClient().get(
-        ApiEndPoints.geofenceReport,
-        queryParameters: queryParams,
-      );
+      final response = await _reportGet(ApiEndPoints.geofenceReport, queryParams);
 
       if (response.data != null) {
         final resData =

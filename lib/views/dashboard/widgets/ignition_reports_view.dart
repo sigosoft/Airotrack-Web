@@ -15,6 +15,16 @@ class IgnitionReportsView extends StatefulWidget {
 class _IgnitionReportsViewState extends State<IgnitionReportsView> {
   int _selectedPage = 1;
 
+  /// The rows of the selected page (10 per page). The API sends every row
+  /// at once, so changing page needs no new request.
+  List<Map<String, dynamic>> _pageOf(List<Map<String, dynamic>> all) {
+    if (all.isEmpty) return const [];
+    final pages = (all.length / 10).ceil();
+    final page = _selectedPage.clamp(1, pages);
+    final start = (page - 1) * 10;
+    return all.sublist(start, (start + 10).clamp(0, all.length));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -244,7 +254,7 @@ class _IgnitionReportsViewState extends State<IgnitionReportsView> {
                           return GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: reportsList.length,
+                            itemCount: _pageOf(reportsList).length,
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: crossAxisCount,
@@ -253,7 +263,7 @@ class _IgnitionReportsViewState extends State<IgnitionReportsView> {
                                   mainAxisExtent: 108,
                                 ),
                             itemBuilder: (context, index) {
-                              final item = reportsList[index];
+                              final item = _pageOf(reportsList)[index];
                               return _buildReportCard(item);
                             },
                           );
@@ -275,7 +285,6 @@ class _IgnitionReportsViewState extends State<IgnitionReportsView> {
                                     setState(() {
                                       _selectedPage = i;
                                     });
-                                    controller.fetchIgnitionReports(page: i);
                                   },
                                   borderRadius: BorderRadius.circular(14),
                                   child: Container(
@@ -313,9 +322,6 @@ class _IgnitionReportsViewState extends State<IgnitionReportsView> {
                                       setState(() {
                                         _selectedPage++;
                                       });
-                                      controller.fetchIgnitionReports(
-                                        page: _selectedPage,
-                                      );
                                     }
                                   },
                                   child: const Text(

@@ -1987,6 +1987,9 @@ class VehicleDetailController extends GetxController {
 
       if (response.data != null && response.data['status'] == true) {
         OdometerOffsetService.forget(imei);
+        if (Get.isRegistered<DashboardController>()) {
+          Get.find<DashboardController>().clearReportCache();
+        }
         AppToast.show(
           response.data['message']?.toString() ?? 'Odometer updated',
         );
