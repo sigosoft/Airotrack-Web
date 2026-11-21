@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../config/dio_client.dart';
 import '../models/profile_model.dart';
+import '../services/lookups_service.dart';
 import '../utils/app_toast.dart';
 import '../views/login_view.dart';
 import 'dashboard_controller.dart';
@@ -407,7 +408,41 @@ class ProfileController extends GetxController {
     }
   }
 
-  Future<void> performSignOut() async {
+  bool _signingOut = false;
+
+  /// Signs out: calls GET /logout so the server revokes the token, then
+  /// clears the local session. A 401 means the token is already invalid, so
+  /// it also counts as signed out. Any other failure keeps the user signed in
+  /// and shows the error. [notifyServer] is false after the account was
+  /// deleted (the token no longer exists on the server).
+  Future<void> performSignOut({bool notifyServer = true}) async {
+    if (_signingOut) return;
+    _signingOut = true;
+    try {
+      if (notifyServer) {
+        final response = await DioClient()
+            .get(ApiEndPoints.logout)
+            .timeout(const Duration(seconds: 15));
+        final code = response.statusCode ?? 0;
+        if (code != 401 && (code < 200 || code >= 300)) {
+          AppToast.show(
+            LookupsService.messageOf(response, fallback: 'Could not sign out'),
+            isError: true,
+          );
+          return;
+        }
+      }
+      await _clearLocalSession();
+    } catch (e) {
+      debugPrint('Error signing out: $e');
+      AppToast.showErrorMessage(e);
+    } finally {
+      _signingOut = false;
+    }
+  }
+
+  Future<void> _clearLocalSession() async {
+    LookupsService.clearCache();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('isLoggedIn');
     await prefs.remove('token');
@@ -444,7 +479,7 @@ class ProfileController extends GetxController {
               ? response.data['message'].toString()
               : 'Account deleted successfully',
         );
-        await performSignOut();
+        await performSignOut(notifyServer: false);
       } else {
         AppToast.show(
           (response.data is Map && response.data['message'] != null)

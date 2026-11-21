@@ -38,6 +38,17 @@ class AddReminderView extends StatelessWidget {
                       Expanded(
                         flex: 3,
                         child: Text(
+                          'Vehicle',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D2939),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
                           'Type',
                           style: TextStyle(
                             fontSize: 13,
@@ -78,6 +89,14 @@ class AddReminderView extends StatelessWidget {
                   child: Obx(() {
                     final list = controller.reminders;
 
+                    if (controller.isLoading.value && list.isEmpty) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A3E0),
+                        ),
+                      );
+                    }
+
                     if (list.isEmpty) {
                       return const Center(
                         child: Text(
@@ -109,8 +128,7 @@ class AddReminderView extends StatelessWidget {
           // 3. Bottom 1-10 Pagination Bar
           Obx(() {
             final activePage = controller.currentPage.value;
-            final reminders = controller.reminders;
-            final totalPages = (reminders.length / 10).ceil();
+            final totalPages = controller.lastPage.value;
 
             if (totalPages <= 1) {
               return const SizedBox.shrink();

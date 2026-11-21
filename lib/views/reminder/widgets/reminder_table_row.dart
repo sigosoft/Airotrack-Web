@@ -27,6 +27,20 @@ class ReminderTableRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Column 0: Vehicle number
+          Expanded(
+            flex: 3,
+            child: Text(
+              item.vehicleNumber.isEmpty ? '-' : item.vehicleNumber,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF344054),
+              ),
+            ),
+          ),
+
           // Column 1: Type (Car Icon + Oil Change text)
           Expanded(
             flex: 3,
