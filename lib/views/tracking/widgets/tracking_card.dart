@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airotrack_web/services/app_settings.dart';
 import '../../../constants/app_assets.dart';
 import '../../../models/tracking_model.dart';
 import '../../../utils/custom_media_query.dart';
@@ -104,7 +105,7 @@ class TrackingCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            '${data.speedKmH}',
+                            AppSettings.to.speed(data.speedKmH, withUnit: false),
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -112,9 +113,9 @@ class TrackingCard extends StatelessWidget {
                               letterSpacing: 1.0,
                             ),
                           ),
-                          const Text(
-                            'Kmph',
-                            style: TextStyle(
+                          Text(
+                            AppSettings.to.speedLabel,
+                            style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                               color: Color(0xFF667085),
@@ -342,7 +343,7 @@ class TrackingCard extends StatelessWidget {
                             children: [
                               _buildMetricPill(
                                 icon: Icons.speed_rounded,
-                                label: data.distanceKmText,
+                                label: AppSettings.to.units(data.distanceKmText),
                                 isMobile: true,
                               ),
                               const SizedBox(width: 4),
@@ -446,7 +447,7 @@ class TrackingCard extends StatelessWidget {
                                       children: [
                                         _buildMetricPill(
                                           icon: Icons.speed_rounded,
-                                          label: data.distanceKmText,
+                                          label: AppSettings.to.units(data.distanceKmText),
                                         ),
                                         const SizedBox(width: 6),
                                         _buildMetricPill(

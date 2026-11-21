@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../../../constants/app_assets.dart';
 import '../../../models/vehicle_detail_model.dart';
+import '../../../services/app_settings.dart';
 import '../../../utils/custom_media_query.dart';
 import 'send_command_dialog.dart';
 
@@ -32,7 +33,12 @@ class VehicleInfoSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rawDigits = data.odometerDigits.replaceAll(RegExp(r'[^0-9]'), '');
+    final s = AppSettings.to;
+    var rawDigits = data.odometerDigits.replaceAll(RegExp(r'[^0-9]'), '');
+    // Odometer in the General Settings distance unit (as on the mobile app).
+    if (s.isMiles && rawDigits.isNotEmpty) {
+      rawDigits = s.convertDistance(int.parse(rawDigits)).round().toString();
+    }
     final cleanDigits = rawDigits.isNotEmpty ? rawDigits : '0000000';
     final odometerDigitsList =
         (cleanDigits.length < 7 ? cleanDigits.padLeft(7, '0') : cleanDigits)
@@ -106,7 +112,7 @@ class VehicleInfoSidebar extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  data.timestamp,
+                  s.anyTime(data.timestamp),
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF667085),
@@ -121,7 +127,7 @@ class VehicleInfoSidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  data.distanceKm,
+                  s.units(data.distanceKm),
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -151,8 +157,10 @@ class VehicleInfoSidebar extends StatelessWidget {
                       fit: BoxFit.contain,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  // General Settings > Speedometer can hide the gauge.
+                  if (s.showSpeedometer.value) const SizedBox(width: 12),
                   // Speedometer Gauge Asset Image with dynamic live speed value
+                  if (s.showSpeedometer.value)
                   SizedBox(
                     width: 85,
                     height: 75,
@@ -176,7 +184,7 @@ class VehicleInfoSidebar extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  '${data.speedKmph}',
+                                  s.speed(data.speedKmph, withUnit: false),
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
@@ -184,9 +192,9 @@ class VehicleInfoSidebar extends StatelessWidget {
                                     height: 1.0,
                                   ),
                                 ),
-                                const Text(
-                                  'Km/h',
-                                  style: TextStyle(
+                                Text(
+                                  s.speedLabel,
+                                  style: const TextStyle(
                                     fontSize: 9.5,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.black,
@@ -337,7 +345,7 @@ class VehicleInfoSidebar extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          data.deviceTime,
+                          s.anyTime(data.deviceTime),
                           style: const TextStyle(
                             fontSize: 10,
                             color: Color(0xFF0288D1),
@@ -375,7 +383,7 @@ class VehicleInfoSidebar extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          data.serverTime,
+                          s.anyTime(data.serverTime),
                           style: const TextStyle(
                             fontSize: 10,
                             color: Color(0xFF0288D1),
@@ -429,19 +437,19 @@ class VehicleInfoSidebar extends StatelessWidget {
               children: [
                 _buildImageAssetStatCard(
                   'Avg Speed',
-                  '${data.avgSpeedKmph} Kmph',
+                  s.units('${data.avgSpeedKmph} Kmph'),
                   AppAssets.avgSpeed,
                 ),
                 const SizedBox(width: 6),
                 _buildImageAssetStatCard(
                   'Max Speed',
-                  '${data.maxSpeedKmph} Kmph',
+                  s.units('${data.maxSpeedKmph} Kmph'),
                   AppAssets.maxSpeed,
                 ),
                 const SizedBox(width: 6),
                 _buildImageAssetStatCard(
                   'Today Odo',
-                  '${data.todayOdoKm} km',
+                  s.units('${data.todayOdoKm} km'),
                   AppAssets.todayKm,
                 ),
               ],

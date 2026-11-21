@@ -10,6 +10,7 @@ import 'widgets/daily_reports_view.dart';
 import 'widgets/engine_hours_chart.dart';
 import 'widgets/expenses_view.dart';
 import 'widgets/fleet_status_chart.dart';
+import 'widgets/alert_reports_view.dart';
 import 'widgets/geofence_reports_view.dart';
 import 'widgets/geofence_view.dart';
 import 'widgets/ignition_reports_view.dart';
@@ -95,6 +96,9 @@ class DashboardView extends StatelessWidget {
                     if (selectedIndex == 3) {
                       // --- Reports Screen Body ---
                       final subIndex = controller.selectedReportSubIndex.value;
+                      if (subIndex == 7) {
+                        return const AlertReportsView();
+                      }
                       if (subIndex == 6) {
                         return const GeofenceReportsView();
                       }

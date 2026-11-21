@@ -2,12 +2,15 @@ import 'dart:convert';
 
 import 'package:airotrack_web/constants/app_strings.dart';
 import 'package:airotrack_web/services/app_settings.dart';
+import 'package:dio/dio.dart' show FormData;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/api_config.dart';
+import '../config/dio_client.dart';
 import '../firebase_options.dart';
 import '../utils/app_toast.dart';
 
@@ -100,7 +103,7 @@ class FcmService {
           : null;
       _token = await FirebaseMessaging.instance.getToken(vapidKey: validVapid);
       if (_token != null) await _saveToken(_token!);
-      debugPrint('[FCM] token: $_token');
+      debugPrint('[FCM] token received');
     } catch (e) {
       debugPrint('[FCM] getToken failed: $e');
     }
@@ -108,13 +111,33 @@ class FcmService {
   }
 
   Future<void> _saveToken(String token) async {
+    final changed = _token != token;
     _token = token;
+    String? previous;
     try {
       final prefs = await SharedPreferences.getInstance();
+      previous = prefs.getString(_prefsTokenKey);
       await prefs.setString(_prefsTokenKey, token);
     } catch (_) {}
-    // If the user is already logged in, you can also send the new token to
-    // the backend here (same API used at login).
+    if (changed || previous != token) await registerTokenWithServer();
+  }
+
+  /// POST update_fcm_token so the backend pushes alerts to this browser
+  /// (same call the mobile app makes). Needs a signed-in user; failures are
+  /// only logged.
+  Future<void> registerTokenWithServer() async {
+    final fcm = _token ?? '';
+    if (fcm.isEmpty) return;
+    try {
+      final auth = await DioClient().getToken();
+      if (auth == null || auth.isEmpty) return;
+      await DioClient().post(
+        ApiEndPoints.updateFcmToken,
+        body: FormData.fromMap({'fcm': fcm, 'platform': 'web'}),
+      );
+    } catch (e) {
+      debugPrint('[FCM] token register failed: $e');
+    }
   }
 
   void _onForegroundMessage(RemoteMessage message) {

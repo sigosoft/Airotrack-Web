@@ -32,6 +32,17 @@ class EngineHoursChart extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          if (dataPoints.isEmpty)
+            const SizedBox(
+              height: 180,
+              child: Center(
+                child: Text(
+                  'No engine hour data',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF667085)),
+                ),
+              ),
+            )
+          else
           SizedBox(
             height: 180,
             child: Row(

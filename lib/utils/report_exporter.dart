@@ -336,4 +336,34 @@ class ReportExporter {
     downloadCsv(csv, fileName);
     AppToast.show('Daily report downloaded successfully');
   }
+
+  /// 8. Export Alert Reports
+  static void exportAlertReport({
+    required List<Map<String, dynamic>> items,
+    required String startDate,
+    required String endDate,
+  }) {
+    if (items.isEmpty) {
+      AppToast.show('No alert report data to download', isError: true);
+      return;
+    }
+
+    final headers = ['Sl No', 'Vehicle', 'Alert', 'Date & Time', 'Details'];
+    final rows = <List<dynamic>>[];
+    for (int i = 0; i < items.length; i++) {
+      final it = items[i];
+      rows.add([
+        i + 1,
+        it['vehicle'] ?? '',
+        it['event'] ?? '',
+        it['datetime'] ?? '',
+        it['content'] ?? '',
+      ]);
+    }
+
+    final csv = _buildCsv(headers, rows);
+    final fileName = _cleanFileName('Alert_Report', startDate, endDate);
+    downloadCsv(csv, fileName);
+    AppToast.show('Alert report downloaded successfully');
+  }
 }

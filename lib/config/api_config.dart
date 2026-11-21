@@ -36,7 +36,7 @@ class ApiEndPoints {
   static String alertsReport = "reports/alerts";
   static String profile = "profile";
   static String updateProfile = "update_profile";
-  static String changePassword = "changePassword";
+  static String changePassword = "change_password";
   static String deleteAccount = "delete_account";
   static String dashboard = "dashboard";
   static String statistics = "statistics";
@@ -71,6 +71,9 @@ class ApiEndPoints {
 
   /// Ends the session on the server (GET, bearer token).
   static String logout = "logout";
+
+  /// POST fcm + platform: registers this browser for push alerts.
+  static String updateFcmToken = "update_fcm_token";
 
   /// Company vehicles: data.vehicles[] {id, vehicle_number, imei}
   static String vehicles = "vehicles";

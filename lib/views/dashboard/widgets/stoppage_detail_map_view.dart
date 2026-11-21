@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/app_settings.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
@@ -135,7 +136,8 @@ class _StoppageDetailMapViewState extends State<StoppageDetailMapView> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: AppSettings.to.tileUrl,
+                      subdomains: AppSettings.tileSubdomains,
                       userAgentPackageName: 'com.airotrack.app',
                     ),
                     // Red Pin Marker

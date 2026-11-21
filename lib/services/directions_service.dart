@@ -1,188 +1,153 @@
-import 'dart:convert';
+import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import '../config/api_config.dart';
 
+/// Road geometry from Mapbox (Directions + Map Matching), the same service
+/// the mobile app uses for live tracking and history.
 class DirectionsService {
   final Dio _dio = Dio();
+  final String _accessToken = ApiConfig.mapboxAccessToken;
 
-  /// Fetch road driving route between [start] and [end] from Google Directions API.
+  /// Road route between two points (Mapbox Directions). Empty on failure —
+  /// never returns a straight off-road chord for live tracking.
   Future<List<LatLng>> getRoute(
-    LatLng start,
-    LatLng end, {
+    LatLng origin,
+    LatLng destination, {
     bool smooth = false,
   }) async {
-    final apiKey = ApiConfig.googleMapKey;
+    final String url =
+        'https://api.mapbox.com/directions/v5/mapbox/driving'
+        '/${origin.longitude},${origin.latitude}'
+        ';${destination.longitude},${destination.latitude}'
+        '?geometries=geojson&overview=full&access_token=$_accessToken';
 
-    // 1. Try Google Directions API
-    if (apiKey.isNotEmpty) {
-      try {
-        final url =
-            'https://maps.googleapis.com/maps/api/directions/json'
-            '?origin=${start.latitude},${start.longitude}'
-            '&destination=${end.latitude},${end.longitude}'
-            '&mode=driving'
-            '&key=$apiKey';
-
-        final response = await _dio.get(url);
-        if (response.statusCode == 200 && response.data != null) {
-          final data = response.data is String
-              ? jsonDecode(response.data as String)
-              : response.data;
-          final routes = data['routes'] as List?;
-          if (routes != null && routes.isNotEmpty) {
-            final polyline = routes[0]['overview_polyline']?['points'];
-            if (polyline is String && polyline.isNotEmpty) {
-              final pts = _decodePolyline(polyline);
-              if (pts.isNotEmpty) return pts;
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('[DirectionsService] Google Directions API notice: $e');
-      }
-    }
-
-    // 2. High-performance fallback: Open Source Routing (handles Web CORS seamlessly)
     try {
-      final url =
-          'https://router.project-osrm.org/route/v1/driving/'
-          '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
-          '?overview=full&geometries=geojson';
-
-      final response = await _dio.get(url);
+      final response = await _dio.get<Map<String, dynamic>>(url);
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data is String
-            ? jsonDecode(response.data as String)
-            : response.data;
-        final routes = data['routes'] as List?;
-        if (routes != null && routes.isNotEmpty) {
+        final List routes = response.data!['routes'] as List? ?? [];
+        if (routes.isNotEmpty) {
           final geometry = routes[0]['geometry'];
-          if (geometry != null && geometry['coordinates'] != null) {
-            final coords = geometry['coordinates'] as List;
-            return coords.map<LatLng>((c) {
-              final lng = (c[0] as num).toDouble();
-              final lat = (c[1] as num).toDouble();
-              return LatLng(lat, lng);
-            }).toList();
+          final points = _coordsFromGeoJson(geometry);
+          if (points.length >= 2) {
+            return _densify(points, maxSegmentM: 2.5);
           }
         }
       }
     } catch (e) {
-      debugPrint('[DirectionsService] OSRM getRoute fallback notice: $e');
+      debugPrint('DirectionsService: Error fetching route: $e');
     }
-
     return const [];
   }
 
-  /// Match recent GPS [trace] onto road geometry using Google Roads Snap-to-Roads API.
+  /// Snaps a GPS trace onto the road network (Map Matching).
+  /// Returns empty list on failure (caller should keep previous on-road path).
   Future<List<LatLng>> matchTrace(
-    List<LatLng> trace, {
-    int radiusMeters = 25,
+    List<LatLng> points, {
+    num radiusMeters = 25,
   }) async {
-    if (trace.length < 2) return const [];
-    final apiKey = ApiConfig.googleMapKey;
+    if (points.length < 2) return const [];
 
-    // 1. Try Google Roads API (Snap to Roads)
-    if (apiKey.isNotEmpty) {
-      try {
-        final sample = trace.length > 100 ? trace.sublist(0, 100) : trace;
-        final path = sample.map((p) => '${p.latitude},${p.longitude}').join('|');
-        final url =
-            'https://roads.googleapis.com/v1/snapToRoads'
-            '?path=$path&interpolate=true&key=$apiKey';
-
-        final response = await _dio.get(url);
-        if (response.statusCode == 200 && response.data != null) {
-          final data = response.data is String
-              ? jsonDecode(response.data as String)
-              : response.data;
-          final snapped = data['snappedPoints'] as List?;
-          if (snapped != null && snapped.isNotEmpty) {
-            final result = <LatLng>[];
-            for (final item in snapped) {
-              final loc = item['location'];
-              if (loc is Map) {
-                final lat = (loc['latitude'] as num?)?.toDouble();
-                final lng = (loc['longitude'] as num?)?.toDouble();
-                if (lat != null && lng != null) {
-                  result.add(LatLng(lat, lng));
-                }
-              }
-            }
-            if (result.isNotEmpty) return result;
-          }
-        }
-      } catch (e) {
-        debugPrint('[DirectionsService] Google Roads Snap-to-Roads notice: $e');
+    final cleaned = <LatLng>[points.first];
+    for (var i = 1; i < points.length; i++) {
+      if (_approxDistanceM(cleaned.last, points[i]) >= 2.0) {
+        cleaned.add(points[i]);
       }
     }
+    if (cleaned.length < 2) return const [];
 
-    // 2. High-performance fallback: Open Source Routing match
+    final input =
+        cleaned.length > 100 ? cleaned.sublist(cleaned.length - 100) : cleaned;
+
+    final coords = input.map((p) => '${p.longitude},${p.latitude}').join(';');
+    final radiuses = List.filled(input.length, radiusMeters.round()).join(';');
+    final url =
+        'https://api.mapbox.com/matching/v5/mapbox/driving/$coords.json'
+        '?geometries=geojson&overview=full&radiuses=$radiuses'
+        '&tidy=true&access_token=$_accessToken';
+
     try {
-      final sample = trace.length > 50 ? trace.sublist(0, 50) : trace;
-      final coordPairs =
-          sample.map((p) => '${p.longitude},${p.latitude}').join(';');
-      final radiuses = List.filled(sample.length, radiusMeters).join(';');
-
-      final url =
-          'https://router.project-osrm.org/match/v1/driving/$coordPairs'
-          '?overview=full&geometries=geojson&radiuses=$radiuses';
-
-      final response = await _dio.get(url);
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data is String
-            ? jsonDecode(response.data as String)
-            : response.data;
-        final matchings = data['matchings'] as List?;
-        if (matchings != null && matchings.isNotEmpty) {
-          final geometry = matchings[0]['geometry'];
-          if (geometry != null && geometry['coordinates'] != null) {
-            final coords = geometry['coordinates'] as List;
-            return coords.map<LatLng>((c) {
-              final lng = (c[0] as num).toDouble();
-              final lat = (c[1] as num).toDouble();
-              return LatLng(lat, lng);
-            }).toList();
-          }
-        }
+      final response = await _dio.get<Map<String, dynamic>>(url);
+      if (response.statusCode != 200 || response.data == null) {
+        return getRoute(input.first, input.last);
       }
-    } catch (e) {
-      debugPrint('[DirectionsService] OSRM match fallback notice: $e');
-    }
 
-    return trace;
+      final data = response.data!;
+      if (data['code']?.toString() != 'Ok') {
+        debugPrint('DirectionsService matchTrace: code=${data['code']}');
+        return getRoute(input.first, input.last);
+      }
+
+      final matchings = data['matchings'];
+      if (matchings is! List || matchings.isEmpty) {
+        return getRoute(input.first, input.last);
+      }
+
+      final snapped = <LatLng>[];
+      for (final m in matchings) {
+        if (m is! Map) continue;
+        snapped.addAll(_coordsFromGeoJson(m['geometry']));
+      }
+
+      if (snapped.length < 2) {
+        return getRoute(input.first, input.last);
+      }
+      return _densify(snapped, maxSegmentM: 2.5);
+    } catch (e) {
+      debugPrint('DirectionsService matchTrace error: $e');
+      return getRoute(input.first, input.last);
+    }
   }
 
-  /// Decode Google encoded polyline string to LatLng points
-  List<LatLng> _decodePolyline(String encoded) {
-    List<LatLng> poly = [];
-    int index = 0, len = encoded.length;
-    int lat = 0, lng = 0;
-
-    while (index < len) {
-      int b, shift = 0, result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
-
-      poly.add(LatLng(lat / 1e5, lng / 1e5));
+  List<LatLng> _coordsFromGeoJson(dynamic geometry) {
+    final out = <LatLng>[];
+    if (geometry is! Map) return out;
+    final coordinates = geometry['coordinates'];
+    if (coordinates is! List) return out;
+    for (final c in coordinates) {
+      if (c is List && c.length >= 2) {
+        final lng = (c[0] as num).toDouble();
+        final lat = (c[1] as num).toDouble();
+        final pt = LatLng(lat, lng);
+        if (out.isEmpty || _approxDistanceM(out.last, pt) >= 0.6) {
+          out.add(pt);
+        }
+      }
     }
-    return poly;
+    return out;
+  }
+
+  /// Insert points so the marker never jumps long chords that look off-road.
+  List<LatLng> _densify(List<LatLng> points, {required double maxSegmentM}) {
+    if (points.length < 2) return points;
+    final out = <LatLng>[points.first];
+    for (var i = 1; i < points.length; i++) {
+      final a = out.last;
+      final b = points[i];
+      final dist = _approxDistanceM(a, b);
+      if (dist <= maxSegmentM) {
+        out.add(b);
+        continue;
+      }
+      final steps = (dist / maxSegmentM).ceil();
+      for (var s = 1; s <= steps; s++) {
+        final t = s / steps;
+        out.add(LatLng(
+          a.latitude + (b.latitude - a.latitude) * t,
+          a.longitude + (b.longitude - a.longitude) * t,
+        ));
+      }
+    }
+    return out;
+  }
+
+  double _approxDistanceM(LatLng a, LatLng b) {
+    const metersPerLat = 111320.0;
+    final dLat = (a.latitude - b.latitude) * metersPerLat;
+    final midLatRad = (a.latitude + b.latitude) * 0.5 * math.pi / 180.0;
+    final metersPerLng = 111320.0 * math.cos(midLatRad);
+    final dLng = (a.longitude - b.longitude) * metersPerLng;
+    return math.sqrt(dLat * dLat + dLng * dLng);
   }
 }

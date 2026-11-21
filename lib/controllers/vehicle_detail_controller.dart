@@ -16,6 +16,7 @@ import '../models/vehicle_model.dart';
 import '../services/directions_service.dart';
 import '../services/app_settings.dart';
 import '../services/live_track_websocket_service.dart';
+import '../services/odometer_offset_service.dart';
 import '../utils/app_toast.dart';
 import 'alerts_controller.dart';
 import 'dashboard_controller.dart';
@@ -80,7 +81,7 @@ class VehicleDetailController extends GetxController {
   // History Playback Engine
   final RxDouble playbackProgress = 0.0.obs;
   final RxBool isPlaying = false.obs;
-  final RxString playbackSpeed = '1x'.obs;
+  final RxString playbackSpeed = '1X'.obs;
   final RxDouble playbackSpeedMultiplier = 1.0.obs;
   final Rxn<LatLng> movingMarkerPosition = Rxn<LatLng>();
   final Rxn<double> movingMarkerBearing = Rxn<double>();
@@ -95,12 +96,6 @@ class VehicleDetailController extends GetxController {
 
   static const Duration _playbackFramePeriod = Duration(milliseconds: 16);
   static const double _playbackTickSeconds = 0.016;
-  // History playback pace at 1x is defined on screen: the car moves about
-  // this many pixels per second at whatever zoom the map is on, so it is
-  // always visibly moving but never jumps. 1.5x / 2x multiply this.
-  static const double _playbackScreenPxPerSec = 45.0;
-  static const double _playbackMinMps = 8.0;
-  static const double _playbackMaxMps = 600.0;
   DateTime? _lastPlaybackTickAt;
   static const double _bearingSmoothing = 0.35;
   static String _formatInitialDate(DateTime dt, {bool isStart = true}) {
@@ -688,6 +683,7 @@ class VehicleDetailController extends GetxController {
   void onInit() {
     super.onInit();
     ever(vehicleDetail, (_) => _applyTodayStats());
+    ever<LatLng?>(liveMarkerPosition, _extendTrail);
     _startLiveAnimationLoop();
     _bindToHomeController();
     placeMovingMarkerAtStart();
@@ -698,6 +694,13 @@ class VehicleDetailController extends GetxController {
       (_) => _applyHistoryOnLive(settings.showHistoryOnLive.value),
     );
     ever<bool>(settings.showHistoryOnLive, _applyHistoryOnLive);
+    // Profile > General Settings > Map Type is the starting map on Track and
+    // History (the map button still cycles through the types).
+    settings.ready.then((_) => mapLayer.value = settings.mapLayerCode);
+    ever<String>(settings.mapType, (_) {
+      _streetViewMode = false;
+      mapLayer.value = settings.mapLayerCode;
+    });
   }
 
   void _applyHistoryOnLive(bool on) {
@@ -707,6 +710,7 @@ class VehicleDetailController extends GetxController {
       _rebuildLiveOverlays();
     } else {
       liveTodayRoute.clear();
+      liveTrail.clear();
     }
   }
 
@@ -974,6 +978,18 @@ class VehicleDetailController extends GetxController {
   // ---------------------------------------------------------------------
   // Map toolbar buttons (Live + History)
   // ---------------------------------------------------------------------
+  /// Status of the vehicle open on Live, from Home (same source the
+  /// mobile app uses to colour the car). Reads Home's list, so an Obx
+  /// rebuilds when it refreshes.
+  String get liveVehicleStatus {
+    if (!Get.isRegistered<HomeController>()) return 'Stopped';
+    final imei = activeImei;
+    for (final v in Get.find<HomeController>().vehicles) {
+      if (v.deviceId == imei) return v.status;
+    }
+    return 'Stopped';
+  }
+
   /// Google tile layer: m = road, y = hybrid (satellite + labels),
   /// s = satellite.
   final RxString mapLayer = 'm'.obs;
@@ -981,12 +997,13 @@ class VehicleDetailController extends GetxController {
     'm': 'Road map',
     'y': 'Hybrid map',
     's': 'Satellite map',
+    'p': 'Terrain map',
   };
 
-  /// Map button: Road -> Hybrid -> Satellite -> Road.
+  /// Map button: Road -> Hybrid -> Terrain -> Road (the mobile app's types).
   void cycleMapLayer() {
     _streetViewMode = false;
-    const order = ['m', 'y', 's'];
+    const order = ['m', 'y', 'p']; // mobile: normal, hybrid, terrain
     final i = order.indexOf(mapLayer.value);
     mapLayer.value = order[(i + 1) % order.length];
     AppToast.show(_mapLayerNames[mapLayer.value] ?? 'Map');
@@ -1057,6 +1074,7 @@ class VehicleDetailController extends GetxController {
   /// Lock button: follow the vehicle on/off.
   void toggleLiveLock() {
     if (isLiveLocked.value) {
+      _liveRecenterTimer?.cancel();
       isLiveLocked.value = false;
       AppToast.show('Map unlocked');
     } else {
@@ -1156,6 +1174,20 @@ class VehicleDetailController extends GetxController {
   final RxList<Map<String, dynamic>> liveStops = <Map<String, dynamic>>[].obs;
   final RxList<LatLng> liveTodayRoute = <LatLng>[].obs;
 
+  /// Trail behind the car on Live, like the mobile app: built from the
+  /// ANIMATED car position (a point every 8 m) while "Show History on
+  /// Live" / the route button is on.
+  final RxList<LatLng> liveTrail = <LatLng>[].obs;
+  static const double _trailStepM = 8.0;
+
+  void _extendTrail(LatLng? p) {
+    if (p == null || !showLiveRoute.value) return;
+    if (liveTrail.isEmpty ||
+        _calculateDistance(liveTrail.last, p) >= _trailStepM) {
+      liveTrail.add(p);
+    }
+  }
+
   void _rebuildLiveOverlays() {
     if (showLiveStops.value) liveStops.assignAll(_computeStops(_todayPoints));
     if (showLiveRoute.value) {
@@ -1235,20 +1267,74 @@ class VehicleDetailController extends GetxController {
   /// Route button (live): show / hide today's travelled path.
   Future<void> toggleLiveRoute() async {
     showLiveRoute.value = !showLiveRoute.value;
+    liveTrail.clear();
     if (!showLiveRoute.value) {
       liveTodayRoute.clear();
       return;
     }
+    // The trail grows from the car's current position (as on mobile).
+    _extendTrail(liveMarkerPosition.value);
     await _ensureTodayPoints();
     _rebuildLiveOverlays();
-    if (liveTodayRoute.length < 2) AppToast.show('No route recorded today');
   }
 
   void onLiveStopTap(Map<String, dynamic> stop) =>
       AppToast.show(stopLabel(stop));
 
+  // ---- History: numbered stops (as on the mobile app) -----------------
+  /// Stops from the API (`stop_analysis.stop_locations`), numbered 1..n:
+  /// {number, point, arrival, departure, duration, address}. Falls back to
+  /// stops worked out from the points when the API sends none.
+  List<Map<String, dynamic>> get historyServerStops {
+    final sa = historyResponseData['stop_analysis'];
+    final list = sa is Map ? sa['stop_locations'] : null;
+    final out = <Map<String, dynamic>>[];
+    if (list is List) {
+      for (final s in list.whereType<Map>()) {
+        final lat = double.tryParse('${s['latitude']}');
+        final lng = double.tryParse('${s['longitude']}');
+        if (lat == null || lng == null || (lat == 0 && lng == 0)) continue;
+        out.add({
+          'number': out.length + 1,
+          'point': LatLng(lat, lng),
+          'arrival': (s['start_time'] ?? s['arrival_time'] ?? '').toString(),
+          'departure': (s['end_time'] ?? s['departure_time'] ?? '').toString(),
+          'duration': (s['duration'] ?? '').toString(),
+          'address': (s['address'] ?? '').toString(),
+        });
+      }
+      return out;
+    }
+    final computed = historyStops;
+    for (int i = 0; i < computed.length; i++) {
+      out.add({
+        'number': i + 1,
+        'point': computed[i]['point'],
+        'arrival': '',
+        'departure': '',
+        'duration': _formatDuration(
+          Duration(seconds: computed[i]['seconds'] as int),
+        ),
+        'address': '',
+      });
+    }
+    return out;
+  }
+
+  /// Stop whose card is open (null = none), like the mobile stop marker.
+  final RxnInt selectedHistoryStop = RxnInt();
+
+  void onHistoryNumberedStopTap(int i) {
+    selectedHistoryStop.value = selectedHistoryStop.value == i ? null : i;
+  }
+
+  /// True once the whole history line is on the road (the end pin is shown
+  /// only then, as on the mobile app).
+  final RxBool historyRouteComplete = false.obs;
+
   // ---- History: P (stops) and location points ------------------------
-  final RxBool showHistoryStops = false.obs;
+  // Stop markers are shown by default, as on the mobile app.
+  final RxBool showHistoryStops = true.obs;
   final RxBool showHistoryPoints = false.obs;
   List<Map<String, dynamic>> _historyStopsCache = [];
   String _historyStopsSig = '';
@@ -1900,6 +1986,7 @@ class VehicleDetailController extends GetxController {
       );
 
       if (response.data != null && response.data['status'] == true) {
+        OdometerOffsetService.forget(imei);
         AppToast.show(
           response.data['message']?.toString() ?? 'Odometer updated',
         );
@@ -2376,7 +2463,10 @@ class VehicleDetailController extends GetxController {
       }
 
       if (response.data != null && response.data['data'] != null) {
-        _parseAndSetStatisticsData(response.data['data']);
+        // Statistics give the tracker's km count; add the vehicle's offset so
+        // Odometer matches Track (as the mobile app does).
+        final offset = await OdometerOffsetService.offsetFor(targetImei);
+        _parseAndSetStatisticsData(response.data['data'], odometerOffset: offset);
       }
     } catch (e) {
       debugPrint('Error loading vehicle statistics: $e');
@@ -2385,12 +2475,18 @@ class VehicleDetailController extends GetxController {
     }
   }
 
-  void _parseAndSetStatisticsData(dynamic data) {
+  void _parseAndSetStatisticsData(dynamic data, {num odometerOffset = 0}) {
     if (data is! Map) return;
 
-    final map = Map<String, dynamic>.from(data);
+    // The API nests the figures under data.statistics.
+    final inner = data['statistics'];
+    final map = OdometerOffsetService.applyTo(
+      Map<String, dynamic>.from(inner is Map ? inner : data),
+      odometerOffset,
+    );
 
     final routeLen =
+        map['route_length_km']?.toString() ??
         map['route_length']?.toString() ??
         map['route_distance']?.toString() ??
         map['distance']?.toString() ??
@@ -2444,6 +2540,7 @@ class VehicleDetailController extends GetxController {
         '00:00:00';
 
     final odo =
+        map['odometer_km']?.toString() ??
         map['odometer']?.toString() ??
         map['odo']?.toString() ??
         map['today_odo']?.toString() ??
@@ -2604,18 +2701,16 @@ class VehicleDetailController extends GetxController {
     return _rawRoute().$2;
   }
 
-  // History road route.
-  // DirectionsService (used by live tracking) asks Google Directions first,
-  // which a browser cannot call (no CORS), then the free OSRM server. That
-  // is fine for live tracking (one short hop every few seconds) but a full
-  // day is ~1500 hops: the free server refuses most of them ("too many
-  // requests") and those hops stay straight. So history sends the points
-  // in batches of 60 to the same OSRM server (one request per batch, one
-  // request per second, retried when refused): ~25 requests for a day.
-  static const String _osrmBase = 'https://router.project-osrm.org';
+  // History road route: see _snapHistoryToRoads (Mapbox, as on mobile).
   final Map<String, (List<LatLng>, List<int>)> _roadRouteCache = {};
-  dio_pkg.Dio? _osrmDio;
-  DateTime _lastOsrmCall = DateTime.fromMillisecondsSinceEpoch(0);
+  dio_pkg.Dio? _osrmDio; // Google Roads requests (live first fix)
+
+  /// History route on the road, done like the mobile app: the raw GPS line
+  /// is drawn at once, then replaced chunk by chunk with Mapbox Map Matching
+  /// (chunks of 80 points, radius 25 m, tidy, input thinned to at most 500
+  /// points). A chunk that cannot be matched stays raw.
+  static const int _histMaxInput = 500;
+  static const int _histChunk = 80;
 
   Future<void> _snapHistoryToRoads(int requestId) async {
     final raw = _rawRoute();
@@ -2628,90 +2723,52 @@ class VehicleDetailController extends GetxController {
       return;
     }
 
-    // Drop parked repeats / duplicates and points whose time goes backwards.
-    final pts = <LatLng>[];
-    final src = <int>[];
-    final ts = <int?>[];
-    int? lastT;
-    for (int i = 0; i < allPts.length; i++) {
-      final dt = _parseTimestamp(_pointTime(historyPoints[allSrc[i]]));
-      final t = dt == null ? null : dt.millisecondsSinceEpoch ~/ 1000;
-      if (pts.isNotEmpty) {
-        if (_distanceMeters(pts.last, allPts[i]) < 5) continue;
-        if (t != null && lastT != null && t <= lastT) continue;
-      }
-      pts.add(allPts[i]);
-      src.add(allSrc[i]);
-      ts.add(t);
-      if (t != null) lastT = t;
+    historyRouteComplete.value = false;
+    selectedHistoryStop.value = null;
+    // 1) Raw line right away (no waiting for the road service).
+    _publishRoute(const [], const [], allPts, allSrc, 0);
+    if (requestId == _historyRequestSeq) {
+      isHistoryLoading.value = false;
+      initPlaybackRoute();
     }
-    if (pts.length < 2) return;
-    final hasTimes = ts.every((t) => t != null);
 
-    // Same vehicle + same points as before (e.g. reopening the tab):
-    // reuse the finished road route, no requests at all.
     final cacheKey =
         '$activeImei|${startDateStr.value}|${endDateStr.value}|${_historySig()}';
     final cached = _roadRouteCache[cacheKey];
     if (cached != null) {
-      _publishRoute(cached.$1, cached.$2, pts, src, pts.length);
+      _publishRoute(cached.$1, cached.$2, allPts, allSrc, allPts.length);
+      historyRouteComplete.value = true;
       return;
     }
 
-    // Batches of 100 points (Google's limit), sharing one point each.
-    final batches = <(int, int)>[];
-    for (
-      int st = 0;
-      st < pts.length - 1;
-      st = math.min(st + 99, pts.length - 1)
-    ) {
-      batches.add((st, math.min(st + 100, pts.length)));
+    // 2) Thin the input to at most 500 points (keeping first and last).
+    final pts = <LatLng>[];
+    final src = <int>[];
+    final step = allPts.length <= _histMaxInput
+        ? 1
+        : (allPts.length / _histMaxInput).ceil();
+    for (int i = 0; i < allPts.length; i += step) {
+      pts.add(allPts[i]);
+      src.add(allSrc[i]);
     }
-    final parts = List<(List<LatLng>, List<int>)?>.filled(batches.length, null);
-
-    // 1) Google Roads for all batches at the same time (Google has no
-    //    one-request-per-second limit), 6 requests in parallel.
-    int next = 0;
-    Future<void> gWorker() async {
-      while (next < batches.length) {
-        if (requestId != _historyRequestSeq) return;
-        final k = next++;
-        final (st, en) = batches[k];
-        parts[k] = await _googleSnap(pts.sublist(st, en), src.sublist(st, en));
-      }
+    if (src.last != allSrc.last) {
+      pts.add(allPts.last);
+      src.add(allSrc.last);
     }
 
-    await Future.wait(List.generate(6, (_) => gWorker()));
-    if (requestId != _historyRequestSeq) return;
-
-    // 2) Batches Google could not do: free road server (one per second).
-    int onRoad = 0, left = 0;
-    for (int k = 0; k < batches.length; k++) {
-      if (parts[k] != null) {
-        onRoad++;
-        continue;
-      }
-      final (st, en) = batches[k];
+    // 3) Chunks of 80 sharing their end point, matched one after another;
+    //    the line is redrawn after each chunk (snapped part + raw rest).
+    final out = <LatLng>[];
+    final outIdx = <int>[];
+    int done = 0; // index in pts up to which the line is on the road
+    for (int st = 0; st < pts.length - 1; st += _histChunk - 1) {
+      if (requestId != _historyRequestSeq) return;
+      final en = math.min(st + _histChunk, pts.length);
       final cp = pts.sublist(st, en);
       final cs = src.sublist(st, en);
-      final ct = hasTimes ? ts.sublist(st, en).cast<int>() : null;
-      parts[k] =
-          await _osrmMatch(cp, cs, ct, requestId) ??
-          await _osrmRouteVia(cp, cs, requestId);
+      final part = await _mapboxMatchChunk(cp, cs) ?? (cp, cs);
       if (requestId != _historyRequestSeq) return;
-      if (parts[k] != null) {
-        onRoad++;
-      } else {
-        left++;
-        parts[k] = (cp, cs);
-      }
-    }
-
-    // 3) Join the batches into one line.
-    var out = <LatLng>[];
-    var outIdx = <int>[];
-    for (final part in parts) {
-      for (int k = 0; k < part!.$1.length; k++) {
+      for (int k = 0; k < part.$1.length; k++) {
         if (out.isNotEmpty && _distanceMeters(out.last, part.$1[k]) < 0.6) {
           continue;
         }
@@ -2719,61 +2776,90 @@ class VehicleDetailController extends GetxController {
         final si = part.$2[k];
         outIdx.add(outIdx.isNotEmpty && si < outIdx.last ? outIdx.last : si);
       }
+      done = en;
+      // Raw points after this chunk, by their index in allPts.
+      final rawFrom = allSrc.indexWhere((s) => s > src[done - 1]);
+      _publishRoute(
+        out,
+        outIdx,
+        allPts,
+        allSrc,
+        rawFrom < 0 ? allPts.length : rawFrom,
+      );
     }
-
-    // 4) All remaining straight pieces of the whole day by road, many per
-    //    request (a handful of requests instead of one per batch).
-    final filled = await _fillGaps(out, outIdx, requestId);
-    if (requestId != _historyRequestSeq) return;
-    out = filled.$1;
-    outIdx = filled.$2;
-    _roadRouteCache[cacheKey] = (out, outIdx);
-    _publishRoute(out, outIdx, pts, src, pts.length);
-    debugPrint('[History] Road route: $onRoad batch(es) on road, $left left');
+    _roadRouteCache[cacheKey] = (List.of(out), List.of(outIdx));
+    if (requestId == _historyRequestSeq) historyRouteComplete.value = true;
   }
 
-  /// One OSRM request, max one per second, retried when refused (429) or
-  /// not answered. Returns the decoded JSON, or null.
-  Future<Map?> _osrmGet(String path, Map<String, dynamic> q, int reqId) async {
-    _osrmDio ??= dio_pkg.Dio(
+  dio_pkg.Dio? _mapboxDio;
+
+  /// Mapbox Map Matching for one chunk. Each output point is tied to the
+  /// nearest input point (moving forward only) for playback timing.
+  Future<(List<LatLng>, List<int>)?> _mapboxMatchChunk(
+    List<LatLng> cp,
+    List<int> cs,
+  ) async {
+    if (cp.length < 2) return null;
+    _mapboxDio ??= dio_pkg.Dio(
       dio_pkg.BaseOptions(
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
         validateStatus: (_) => true,
       ),
     );
-    for (int attempt = 0; attempt < 3; attempt++) {
-      if (reqId != _historyRequestSeq) return null;
-      final wait = _lastOsrmCall
-          .add(const Duration(milliseconds: 1100))
-          .difference(DateTime.now());
-      if (!wait.isNegative) await Future.delayed(wait);
-      _lastOsrmCall = DateTime.now();
-      try {
-        final res = await _osrmDio!.get('$_osrmBase$path', queryParameters: q);
-        final data = res.data is String
-            ? jsonDecode(res.data as String)
-            : res.data;
-        if (res.statusCode == 200 && data is Map) return data;
-        if (data is Map && data['code'] != null && res.statusCode != 429) {
-          return data; // e.g. NoMatch: a real answer, do not retry
-        }
-        debugPrint('[History] Road server busy (${res.statusCode}), retrying');
-      } catch (e) {
-        debugPrint('[History] Road server not answering, retrying: $e');
+    try {
+      final coords = cp
+          .map(
+            (p) =>
+                '${p.longitude.toStringAsFixed(6)},${p.latitude.toStringAsFixed(6)}',
+          )
+          .join(';');
+      final res = await _mapboxDio!.get(
+        'https://api.mapbox.com/matching/v5/mapbox/driving/$coords.json',
+        queryParameters: {
+          'geometries': 'geojson',
+          'overview': 'full',
+          'tidy': 'true',
+          'radiuses': List.filled(cp.length, 25).join(';'),
+          'access_token': ApiConfig.mapboxAccessToken,
+        },
+      );
+      final data = res.data is String
+          ? jsonDecode(res.data as String)
+          : res.data;
+      if (res.statusCode != 200 || data is! Map || data['code'] != 'Ok') {
+        return null;
       }
-      if (attempt < 2)
-        await Future.delayed(Duration(seconds: 1 + attempt)); // 1,2 s
+      final matchings = data['matchings'];
+      if (matchings is! List || matchings.isEmpty) return null;
+      final line = <LatLng>[];
+      for (final m in matchings.whereType<Map>()) {
+        final g = m['geometry'];
+        final c = g is Map ? g['coordinates'] : null;
+        if (c is! List) continue;
+        for (final xy in c.whereType<List>()) {
+          if (xy.length < 2) continue;
+          line.add(
+            LatLng((xy[1] as num).toDouble(), (xy[0] as num).toDouble()),
+          );
+        }
+      }
+      if (line.length < 2) return null;
+      final idx = <int>[];
+      int j = 0;
+      for (final p in line) {
+        while (j < cp.length - 1 &&
+            _distanceMeters(cp[j + 1], p) <= _distanceMeters(cp[j], p)) {
+          j++;
+        }
+        idx.add(cs[j]);
+      }
+      return (line, idx);
+    } catch (e) {
+      debugPrint('[History] Mapbox match failed: $e');
+      return null;
     }
-    return null;
   }
-
-  String _coords(List<LatLng> cp) => cp
-      .map(
-        (p) =>
-            '${p.longitude.toStringAsFixed(6)},${p.latitude.toStringAsFixed(6)}',
-      )
-      .join(';');
 
   /// Google Roads snap-to-roads (works from the browser): puts the points on
   /// Google's roads - the same roads the Google map shows - and adds road
@@ -2842,189 +2928,6 @@ class VehicleDetailController extends GetxController {
   }
 
   bool _googleRoadsOk = true;
-
-  /// Any straight piece longer than [_gapM] left in the route (points far
-  /// apart at speed) is replaced by the road between its ends. All gaps of
-  /// a batch go in ONE road request (waypoints A1,B1,A2,B2,...; the legs
-  /// A->B are the gaps, the legs B->A in between are ignored).
-  static const double _gapM = 90;
-
-  Future<(List<LatLng>, List<int>)> _fillGaps(
-    List<LatLng> pts,
-    List<int> idx,
-    int reqId,
-  ) async {
-    final gaps = <int>[];
-    for (int i = 0; i < pts.length - 1; i++) {
-      if (_distanceMeters(pts[i], pts[i + 1]) > _gapM) gaps.add(i);
-    }
-    if (gaps.isEmpty) return (pts, idx);
-    final fills = <int, List<LatLng>>{};
-    for (int g0 = 0; g0 < gaps.length; g0 += 80) {
-      final group = gaps.sublist(g0, math.min(g0 + 80, gaps.length));
-      final wps = <LatLng>[];
-      for (final i in group) {
-        wps
-          ..add(pts[i])
-          ..add(pts[i + 1]);
-      }
-      final data = await _osrmGet('/route/v1/driving/${_coords(wps)}', {
-        'overview': 'false',
-        'steps': 'true',
-        'geometries': 'geojson',
-      }, reqId);
-      if (data == null || data['code'] != 'Ok') continue;
-      final routes = (data['routes'] as List?) ?? const [];
-      if (routes.isEmpty || routes.first is! Map) continue;
-      final legs = ((routes.first as Map)['legs'] as List?) ?? const [];
-      for (int k = 0; k < group.length; k++) {
-        final li = k * 2;
-        if (li >= legs.length || legs[li] is! Map) continue;
-        final leg = legs[li] as Map;
-        final i = group[k];
-        final straight = _distanceMeters(pts[i], pts[i + 1]);
-        final legDist = (leg['distance'] as num?)?.toDouble() ?? 0;
-        if (legDist > straight * 2.0 + 120) continue; // loop / wrong way
-        final road = <LatLng>[];
-        for (final st in (leg['steps'] as List?) ?? const []) {
-          final g = st is Map ? st['geometry'] : null;
-          final cl = g is Map ? (g['coordinates'] as List?) : null;
-          for (final c in cl ?? const []) {
-            if (c is List && c.length >= 2) {
-              road.add(
-                LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()),
-              );
-            }
-          }
-        }
-        if (road.length >= 2) fills[i] = road;
-      }
-    }
-    final out = <LatLng>[];
-    final oi = <int>[];
-    for (int i = 0; i < pts.length; i++) {
-      out.add(pts[i]);
-      oi.add(idx[i]);
-      final f = fills[i];
-      if (f != null) {
-        out.addAll(f);
-        oi.addAll(List.filled(f.length, idx[i]));
-      }
-    }
-    return (out, oi);
-  }
-
-  /// OSRM map matching: puts every point on the road it was driven on and
-  /// follows the road between them, in the driving direction.
-  Future<(List<LatLng>, List<int>)?> _osrmMatch(
-    List<LatLng> cp,
-    List<int> cs,
-    List<int>? ct,
-    int reqId,
-  ) async {
-    final data = await _osrmGet('/match/v1/driving/${_coords(cp)}', {
-      'geometries': 'geojson',
-      'overview': 'false',
-      'steps': 'true',
-      'gaps': 'ignore',
-      'tidy': 'true',
-      'radiuses': List.filled(cp.length, '50').join(';'),
-      if (ct != null) 'timestamps': ct.join(';'),
-    }, reqId);
-    if (data == null || data['code'] != 'Ok') return null;
-    final tps = (data['tracepoints'] as List?) ?? const [];
-    final matchings = (data['matchings'] as List?) ?? const [];
-
-    final out = <LatLng>[];
-    final idx = <int>[];
-    Map? prev;
-    int prevSrc = cs.first;
-    for (int i = 0; i < tps.length && i < cp.length; i++) {
-      final tp = tps[i];
-      if (tp is! Map || tp['location'] is! List) continue; // outlier point
-      final loc = tp['location'] as List;
-      final here = LatLng(
-        (loc[1] as num).toDouble(),
-        (loc[0] as num).toDouble(),
-      );
-      if (prev != null && prev['matchings_index'] == tp['matchings_index']) {
-        final mi = (tp['matchings_index'] as num).toInt();
-        final li = (prev['waypoint_index'] as num).toInt();
-        final legs = mi < matchings.length
-            ? ((matchings[mi]['legs'] as List?) ?? const [])
-            : const [];
-        if (li < legs.length && legs[li] is Map) {
-          final leg = legs[li] as Map;
-          final legDist = (leg['distance'] as num?)?.toDouble() ?? 0;
-          final straight = out.isEmpty ? 0.0 : _distanceMeters(out.last, here);
-          // Skip a leg that loops away (wrong-way / U-turn detour).
-          if (legDist <= straight * 1.8 + 100) {
-            for (final st in (leg['steps'] as List?) ?? const []) {
-              final g = st is Map ? st['geometry'] : null;
-              final cl = g is Map ? (g['coordinates'] as List?) : null;
-              for (final c in cl ?? const []) {
-                if (c is List && c.length >= 2) {
-                  out.add(
-                    LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()),
-                  );
-                  idx.add(prevSrc);
-                }
-              }
-            }
-          }
-        }
-      }
-      out.add(here);
-      idx.add(cs[i]);
-      prev = tp;
-      prevSrc = cs[i];
-    }
-    return out.length >= 2 ? (out, idx) : null;
-  }
-
-  /// Backup when matching fails: road route through the same points.
-  Future<(List<LatLng>, List<int>)?> _osrmRouteVia(
-    List<LatLng> cp,
-    List<int> cs,
-    int reqId,
-  ) async {
-    final data = await _osrmGet('/route/v1/driving/${_coords(cp)}', {
-      'overview': 'false',
-      'steps': 'true',
-      'geometries': 'geojson',
-    }, reqId);
-    if (data == null || data['code'] != 'Ok') return null;
-    final routes = (data['routes'] as List?) ?? const [];
-    if (routes.isEmpty || routes.first is! Map) return null;
-    final legs = ((routes.first as Map)['legs'] as List?) ?? const [];
-    final out = <LatLng>[cp.first];
-    final idx = <int>[cs.first];
-    for (int li = 0; li < legs.length && li < cp.length - 1; li++) {
-      final leg = legs[li];
-      final straight = _distanceMeters(cp[li], cp[li + 1]);
-      final legDist = leg is Map
-          ? ((leg['distance'] as num?)?.toDouble() ?? 0)
-          : 0.0;
-      if (leg is Map && legDist <= straight * 1.8 + 100) {
-        for (final st in (leg['steps'] as List?) ?? const []) {
-          final g = st is Map ? st['geometry'] : null;
-          final cl = g is Map ? (g['coordinates'] as List?) : null;
-          for (final c in cl ?? const []) {
-            if (c is List && c.length >= 2) {
-              out.add(
-                LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()),
-              );
-              idx.add(cs[li]);
-            }
-          }
-        }
-      } else {
-        out.add(cp[li + 1]);
-        idx.add(cs[li + 1]);
-      }
-    }
-    return out.length >= 2 ? (out, idx) : null;
-  }
 
   void _publishRoute(
     List<LatLng> out,
@@ -3275,13 +3178,13 @@ class VehicleDetailController extends GetxController {
     final current = playbackSpeedMultiplier.value;
     if (current < 1.25) {
       playbackSpeedMultiplier.value = 1.5;
-      playbackSpeed.value = '1.5x';
+      playbackSpeed.value = '1.5X';
     } else if (current < 1.75) {
       playbackSpeedMultiplier.value = 2.0;
-      playbackSpeed.value = '2x';
+      playbackSpeed.value = '2X';
     } else {
       playbackSpeedMultiplier.value = 1.0;
-      playbackSpeed.value = '1x';
+      playbackSpeed.value = '1X';
     }
   }
 
@@ -3380,8 +3283,21 @@ class VehicleDetailController extends GetxController {
               .clamp(0.001, 0.1);
     _lastPlaybackTickAt = now;
 
-    final baseMps = _playbackBaseMps(route);
-    final effectiveMps = baseMps * playbackSpeedMultiplier.value;
+    // Same pace as the mobile app: 120 m/s with no speed data, otherwise
+    // the recorded speed here (at least 480 km/h), times the 1X/1.5X/2X.
+    final paceIdx = _playbackPointIndex;
+    final double effectiveMps;
+    if (_playbackSpeedSeries.isEmpty) {
+      effectiveMps = _mobileBasePlaybackMps * playbackSpeedMultiplier.value;
+    } else {
+      final backendKmph = paceIdx < _playbackSpeedSeries.length
+          ? _playbackSpeedSeries[paceIdx]
+          : 0.0;
+      effectiveMps =
+          math.max(_mobileMinPlaybackKmph, backendKmph) *
+          playbackSpeedMultiplier.value /
+          3.6;
+    }
     double distanceBudgetMeters = effectiveMps * dt;
 
     while (distanceBudgetMeters > 0) {
@@ -3488,33 +3404,8 @@ class VehicleDetailController extends GetxController {
     } catch (_) {}
   }
 
-  /// 1x playback speed in m/s, derived from the map's current zoom so the
-  /// marker moves ~[_playbackScreenPxPerSec] px/s on screen.
-  double _playbackBaseMps(List<LatLng> route) {
-    double zoom = 14.0;
-    try {
-      zoom = historyMapController.camera.zoom;
-    } catch (_) {}
-    final lat = (movingMarkerPosition.value ?? route.first).latitude;
-    final metersPerPixel =
-        156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
-    final screenPace = metersPerPixel * _playbackScreenPxPerSec;
-    // A long route (a whole day) must still finish in a sensible time and
-    // the progress bar must visibly move, even when zoomed in close: at 1x
-    // the full route plays in at most [_playbackMaxRouteSeconds].
-    final cum = _cumulativeKm(route);
-    final routePace = cum.isEmpty
-        ? 0.0
-        : cum.last * 1000 / _playbackMaxRouteSeconds;
-    // ...but never more than 3x the on-screen pace, so even at 2x the car
-    // moves at most ~270 px/s and the map tiles keep up with it.
-    return math
-        .max(screenPace, math.min(routePace, screenPace * 3))
-        .clamp(_playbackMinMps, _playbackMaxMps)
-        .toDouble();
-  }
-
-  static const double _playbackMaxRouteSeconds = 900; // 15 min at 1x
+  static const double _mobileBasePlaybackMps = 120.0;
+  static const double _mobileMinPlaybackKmph = 480.0;
 
   // Cumulative distance (km) along the playback route, cached per route.
   List<LatLng>? _cumKmFor;
@@ -3623,6 +3514,7 @@ class VehicleDetailController extends GetxController {
     final int session = reconnectOnly ? _liveSessionId : ++_liveSessionId;
 
     if (!reconnectOnly) {
+      liveTrail.clear(); // new vehicle: start a new trail
       _liveTrackingImei = imei;
       _stopLiveAnimationLoop();
       _stopLivePollingTimer();
@@ -3797,6 +3689,9 @@ class VehicleDetailController extends GetxController {
       if (_liveDisposed || activeImei.isEmpty || selectedTopTab.value != -1) {
         return;
       }
+      // Like the mobile app: the WebSocket carries live positions; the
+      // snapshot is only polled while the socket is down.
+      if (_liveTrackWs.isConnected) return;
       final elapsedSec = DateTime.now()
           .difference(_lastLiveUpdateReceivedAt)
           .inSeconds;
@@ -4773,15 +4668,15 @@ class VehicleDetailController extends GetxController {
   // Heading = direction of the road just in front of the car. 14 m made
   // the car turn long before the corner (it looked like floating across
   // the junction); 60 deg/s made it finish the turn too late.
-  static const double _rtHeadingLookAheadM = 6.0;
+  static const double _rtHeadingLookAheadM = 14.0;
   static const double _rtMaxHeadingDegPerSec = 120.0;
-  static const double _rtWaypointMinM = 2.0;
+  static const double _rtWaypointMinM = 4.0;
   static const double _rtMinRouteM = 8.0;
   static const double _rtMaxBackwardDeg = 95.0;
   static const double _rtSnapBackMinLagM = 4.0;
-  static const double _rtReverseStepM = 4.0;
+  static const double _rtReverseStepM = 6.0;
   static const double _rtMinGpsBearingMoveM = 10.0;
-  static const int _rtTraceMax = 24;
+  static const int _rtTraceMax = 8;
   static const double _rtMaxGpsToRoadM = 60.0;
 
   void _rtReset() {
@@ -5234,18 +5129,14 @@ class VehicleDetailController extends GetxController {
       try {
         List<LatLng> road = const [];
         if (trace.length >= 2) {
-          // 1) Google Roads directly (plain request, works in the browser,
-          //    same roads as the Google map - like the mobile app gets).
-          road = await _rtMatchOnGoogle(trace);
-          if (road.length < 2) {
-            // 2) Fallback: DirectionsService (OSRM).
-            road = await _directionsService
-                .matchTrace(trace, radiusMeters: 50)
-                .timeout(const Duration(seconds: 8));
-            // DirectionsService returns the raw trace itself when no road
-            // match was possible: that is NOT a road.
-            if (_rtSameAsTrace(road, trace)) road = const [];
-          }
+          // Mapbox Map Matching on the last 6 fixes, radius 25 m (falls back
+          // to a Mapbox Directions route), exactly as the mobile app does.
+          final recent =
+              trace.length > 6 ? trace.sublist(trace.length - 6) : trace;
+          road = await _directionsService
+              .matchTrace(recent, radiusMeters: 25)
+              .timeout(const Duration(seconds: 8));
+          if (_rtSameAsTrace(road, recent)) road = const [];
         } else {
           // Single fix (first position): road route from it to itself is
           // not possible; ask the nearest road point instead.
@@ -5305,21 +5196,6 @@ class VehicleDetailController extends GetxController {
     }();
   }
 
-  /// Live GPS trace snapped on Google's roads (the roads drawn on the map).
-  /// Empty when Google is not available, so the caller can fall back.
-  Future<List<LatLng>> _rtMatchOnGoogle(List<LatLng> trace) async {
-    try {
-      final res = await _googleSnap(
-        trace,
-        List<int>.generate(trace.length, (i) => i),
-      ).timeout(const Duration(seconds: 8));
-      if (res == null || res.$1.length < 2) return const [];
-      return res.$1;
-    } catch (e) {
-      debugPrint('[LiveTrack] Google road match failed: $e');
-      return const [];
-    }
-  }
 
   bool _rtSameAsTrace(List<LatLng> road, List<LatLng> trace) {
     if (road.length != trace.length) return false;
@@ -5845,11 +5721,11 @@ class VehicleDetailController extends GetxController {
   void _followLiveCamera(LatLng point) {
     if (!isLiveLocked.value) return;
     try {
-      var zoom = 16.0;
+      var zoom = liveFollowZoom;
       try {
         zoom = liveMapController.camera.zoom;
       } catch (_) {}
-      if (zoom < 13.0) zoom = 16.0;
+      if (zoom < 13.0) zoom = liveFollowZoom;
 
       liveMapController.move(point, zoom);
     } catch (_) {}
@@ -5997,7 +5873,13 @@ class VehicleDetailController extends GetxController {
   }
 
   void recenterLiveMap() {
+    _liveRecenterTimer?.cancel();
     isLiveLocked.value = true;
+    // Re-centring returns to the mobile follow zoom.
+    try {
+      final car = liveMarkerPosition.value;
+      if (car != null) liveMapController.move(car, liveFollowZoom);
+    } catch (_) {}
     final pt =
         liveMarkerPosition.value ??
         (vehicleDetail.value.latitude != null &&
@@ -6053,13 +5935,25 @@ class VehicleDetailController extends GetxController {
       return;
     }
     isLiveLocked.value = false; // panned away by hand
+    // As on the mobile app: follow the car again 3 s after the last drag.
+    _liveRecenterTimer?.cancel();
+    _liveRecenterTimer = Timer(_liveRecenterDelay, () {
+      if (_liveDisposed || isLiveLocked.value) return;
+      recenterLiveMap();
+    });
   }
+
+  /// Mobile `_followZoom` / `_recenterDelay`.
+  static const double liveFollowZoom = 17.2;
+  static const Duration _liveRecenterDelay = Duration(seconds: 3);
+  Timer? _liveRecenterTimer;
 
   void stopLiveTracking() {
     // Invalidate any in-flight start/poll/road request so it can't restart
     // timers or the socket after the user left the live tab.
     _liveSessionId++;
     _liveTrackingImei = null;
+    _liveRecenterTimer?.cancel();
     _stopLiveAnimationLoop();
     _stopLivePollingTimer();
     unawaited(_liveTrackWs.disconnect());

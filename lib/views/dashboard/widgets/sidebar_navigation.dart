@@ -39,6 +39,7 @@ class SidebarNavigation extends StatelessWidget {
       'Summary Reports',
       'Over Speed Reports',
       'Geofence Reports',
+      'Alert Reports',
     ];
 
     return Container(

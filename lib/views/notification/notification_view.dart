@@ -6,6 +6,7 @@ import '../../controllers/notification_controller.dart';
 import '../../utils/custom_media_query.dart';
 import '../dashboard/widgets/sidebar_navigation.dart';
 import 'widgets/notification_card.dart';
+import 'widgets/notification_filter_dialog.dart';
 import 'widgets/notification_header.dart';
 
 class NotificationView extends StatelessWidget {
@@ -26,11 +27,10 @@ class NotificationView extends StatelessWidget {
       final formatted =
           "${picked.day.toString().padLeft(2, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.year}";
       if (isStart) {
-        controller.startDateStr.value = formatted;
+        controller.setDateRange(start: formatted);
       } else {
-        controller.endDateStr.value = formatted;
+        controller.setDateRange(end: formatted);
       }
-      controller.loadNotifications();
     }
   }
 
@@ -82,7 +82,11 @@ class NotificationView extends StatelessWidget {
                   : null,
               onStartDateTap: () => _pickDate(context, controller, true),
               onEndDateTap: () => _pickDate(context, controller, false),
-              onFilterTap: () => controller.loadNotifications(),
+              onFilterTap: () => showDialog(
+                context: context,
+                builder: (_) =>
+                    NotificationFilterDialog(controller: controller),
+              ),
             ),
           ),
 
@@ -192,18 +196,72 @@ class NotificationView extends StatelessWidget {
                               controller.notificationData.value.notifications;
                           final totalPages = (notifications.length / 10).ceil();
 
+                          final loadMore = controller.selectedTab.value == 0 &&
+                                  controller.hasMore.value
+                              ? InkWell(
+                                  onTap: controller.isLoadingMore.value
+                                      ? null
+                                      : controller.loadMore,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    child: controller.isLoadingMore.value
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Color(0xFF00A3E0),
+                                            ),
+                                          )
+                                        : const Text(
+                                            'LOAD MORE',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF00A3E0),
+                                            ),
+                                          ),
+                                  ),
+                                )
+                              : null;
+
                           if (totalPages <= 1) {
-                            return const SizedBox.shrink();
+                            return loadMore == null
+                                ? const SizedBox.shrink()
+                                : Center(child: loadMore);
                           }
 
                           final safePage = controller.currentPage.value
                               .clamp(1, totalPages);
+                          // A window of up to 9 page numbers.
+                          var first = (safePage - 4).clamp(1, totalPages);
+                          final last = (first + 8).clamp(1, totalPages);
+                          first = (last - 8).clamp(1, totalPages);
 
-                          return Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          return Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              ...List.generate(totalPages, (index) {
-                                final pageNum = index + 1;
+                              if (safePage > 1)
+                                InkWell(
+                                  onTap: () =>
+                                      controller.selectPage(safePage - 1),
+                                  child: const Padding(
+                                    padding: EdgeInsets.only(right: 8),
+                                    child: Text(
+                                      'PREV',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF00A3E0),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ...List.generate(last - first + 1, (index) {
+                                final pageNum = first + index;
                                 final isActive = safePage == pageNum;
 
                                 return InkWell(
@@ -253,6 +311,8 @@ class NotificationView extends StatelessWidget {
                                     ),
                                   ),
                                 ),
+                              if (safePage == totalPages && loadMore != null)
+                                loadMore,
                             ],
                           );
                         }),

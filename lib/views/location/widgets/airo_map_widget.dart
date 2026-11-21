@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../constants/app_assets.dart';
 import '../../../controllers/location_controller.dart';
 import '../../../models/vehicle_model.dart';
+import '../../../services/app_settings.dart';
 import 'vehicle_details_dialog.dart';
 
 class AiroMapWidget extends StatelessWidget {
@@ -34,7 +35,7 @@ class AiroMapWidget extends StatelessWidget {
                   controller.mapVehicles.first.latitude!,
                   controller.mapVehicles.first.longitude!,
                 )
-              : const LatLng(20.5937, 78.9629));
+              : LocationController.defaultCenter);
 
       return FlutterMap(
         mapController: controller.mapController,
@@ -44,6 +45,10 @@ class AiroMapWidget extends StatelessWidget {
           minZoom: 3.0,
           maxZoom: 19.0,
           onMapReady: controller.onMapReady,
+          // Rotation locked, as on the mobile map.
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          ),
           onPositionChanged: (position, hasGesture) {
             controller.onPositionChanged(position, hasGesture);
           },
@@ -59,13 +64,15 @@ class AiroMapWidget extends StatelessWidget {
               final anchor = g.anchor;
               final isGroup = g.vehicles.length > 1;
               final status = evaluateVehicleStatus(anchor);
-              final isSelected = selectedId == anchor.deviceId;
+              final isSelected =
+                  g.vehicles.any((v) => v.deviceId == selectedId);
+              final scale = AppSettings.to.iconScale;
 
+              // Mobile marker box: 180 x (38 + 52 x icon size).
               return Marker(
                 point: LatLng(anchor.latitude!, anchor.longitude!),
-                width: 140,
-                height: 64,
-                alignment: Alignment.bottomCenter,
+                width: 180,
+                height: 38 + 52 * scale,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
@@ -107,72 +114,63 @@ class _VehicleMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = status.color;
+    // Same marker as the mobile Locations map: a black pill (blue when
+    // selected) with the white plate and a "+N" badge, the status car below.
     final plate = vehicle.plateNumber.isNotEmpty
         ? vehicle.plateNumber
         : vehicle.deviceId;
+    final extra = groupCount - 1;
+    const blue = Color(0xFF009FE3);
+    final carPx = (isSelected ? 52.0 : 44.0) * AppSettings.to.iconScale;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Top Plate Pill (+ Cluster Badge if multiple)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: isSelected ? const Color(0xFF0077C5) : statusColor,
-              width: isSelected ? 2 : 1.2,
-            ),
-            boxShadow: const [
+            color: isSelected ? blue : Colors.black,
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x28000000),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 4,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Status Color Indicator Dot
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 4),
               Flexible(
                 child: Text(
-                  plate,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
-                    color: const Color(0xFF1D2939),
-                  ),
+                  plate.isEmpty ? '—' : plate,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              if (groupCount > 1) ...[
-                const SizedBox(width: 4),
+              if (extra > 0) ...[
+                const SizedBox(width: 6),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0077C5),
-                    borderRadius: BorderRadius.circular(4),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    '+${groupCount - 1}',
-                    style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    '+$extra',
+                    style: TextStyle(
+                      color: isSelected ? blue : Colors.black,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -180,42 +178,20 @@ class _VehicleMarker extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 2),
-
-        // Car Graphic with status color ring
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: statusColor, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: statusColor.withValues(alpha: 0.35),
-                blurRadius: 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.all(3),
-          child: Image.asset(
-            status.assetPath,
-            fit: BoxFit.contain,
+        const SizedBox(height: 4),
+        Image.asset(
+          status.assetPath,
+          width: carPx,
+          height: carPx,
+          errorBuilder: (_, _, _) => Image.asset(
+            status.fallbackAssetPath,
+            width: carPx,
+            height: carPx,
             errorBuilder: (_, _, _) => Image.asset(
-              status.fallbackAssetPath,
-              color: status == VehicleMarkerStatus.running ||
-                      status == VehicleMarkerStatus.stopped
-                  ? null
-                  : statusColor,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => Image.asset(
-                AppAssets.carImage,
-                width: 18,
-                height: 18,
-                color: statusColor,
-              ),
+              AppAssets.carImage,
+              width: carPx * 0.6,
+              height: carPx * 0.6,
+              color: status.color,
             ),
           ),
         ),

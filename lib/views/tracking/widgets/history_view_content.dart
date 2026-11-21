@@ -6,7 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../config/api_config.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import '../../../utils/custom_media_query.dart';
-import 'top_view_car.dart';
+import '../../../services/app_settings.dart';
 
 class HistoryViewContent extends StatelessWidget {
   const HistoryViewContent({super.key});
@@ -65,34 +65,20 @@ class HistoryViewContent extends StatelessWidget {
                 },
               ),
               children: [
+                // Mapbox streets, the mobile History map (no map-type switch).
                 TileLayer(
-                  key: ValueKey(controller.mapLayer.value),
-                  urlTemplate: controller.tileUrlFor(
-                    ApiConfig.googleMapTileUrl,
-                  ),
-                  subdomains: controller.tileSubdomainsFor(
-                    ApiConfig.googleMapTileUrl,
-                    ApiConfig.googleMapSubdomains,
-                  ),
+                  urlTemplate: _historyTileUrl,
                   userAgentPackageName: 'com.airotrack.app',
                 ),
-                // Dynamic Route Polylines
-                if (activeRoute.isNotEmpty)
+                // One route line in the app blue, as on the mobile app.
+                if (activeRoute.length >= 2)
                   PolylineLayer(
                     polylines: [
-                      // Full planned journey guide line
                       Polyline(
                         points: activeRoute,
-                        color: const Color(0xFF4FC3F7), // sky blue
-                        strokeWidth: 3.5,
+                        color: const Color(0xFF009FE3),
+                        strokeWidth: 4,
                       ),
-                      // Traveled path dynamically drawn behind vehicle as it moves
-                      if (controller.traveledRoutePoints.length >= 2)
-                        Polyline(
-                          points: controller.traveledRoutePoints,
-                          color: Colors.black,
-                          strokeWidth: 3.5,
-                        ),
                     ],
                   ),
                 // Recorded GPS points (location button)
@@ -109,80 +95,92 @@ class HistoryViewContent extends StatelessWidget {
                         ),
                     ],
                   ),
-                // Parking stops (P button)
-                if (controller.showHistoryStops.value)
-                  MarkerLayer(
-                    markers: [
-                      for (final stop in controller.historyStops)
-                        Marker(
-                          point: stop['point'] as LatLng,
-                          width: 24,
-                          height: 24,
-                          child: GestureDetector(
-                            onTap: () => controller.onHistoryStopTap(stop),
-                            child: const _HistoryParkingBadge(),
-                          ),
-                        ),
-                    ],
-                  ),
-                // Dynamic Vehicle & Location Flag PNG Markers
                 MarkerLayer(
                   markers: [
-                    // Route start pin (green)
+                    // Start (green) and end (red) pins; the end pin appears
+                    // once the whole line is on the road (mobile).
                     if (routeStart != null)
                       Marker(
                         point: routeStart,
                         width: 30,
                         height: 30,
-                        alignment: Alignment.topCenter,
                         child: const Icon(
-                          Icons.location_on,
+                          Icons.location_pin,
                           size: 30,
-                          color: Color(0xFF12B76A),
+                          color: Colors.green,
                         ),
                       ),
-                    // Route end pin (red)
-                    if (routeEnd != null)
+                    if (routeEnd != null &&
+                        controller.historyRouteComplete.value)
                       Marker(
                         point: routeEnd,
                         width: 30,
                         height: 30,
-                        alignment: Alignment.topCenter,
                         child: GestureDetector(
                           onTap: controller.toggleHistoryMapDialog,
                           child: const Icon(
-                            Icons.location_on,
+                            Icons.location_pin,
                             size: 30,
-                            color: Color(0xFFE53935),
+                            color: Colors.red,
                           ),
                         ),
                       ),
-                    // Vehicle Marker (Normal upright when stopped/resting, aligned with moving direction when playing)
+                    // Numbered stops (stop_analysis), card on tap.
+                    if (controller.showHistoryStops.value)
+                      for (final (i, stop)
+                          in controller.historyServerStops.indexed)
+                        Marker(
+                          point: stop['point'] as LatLng,
+                          width: controller.selectedHistoryStop.value == i
+                              ? 250
+                              : 28,
+                          height: controller.selectedHistoryStop.value == i
+                              ? 170
+                              : 28,
+                          alignment: controller.selectedHistoryStop.value == i
+                              ? Alignment.topCenter
+                              : Alignment.center,
+                          child: _HistoryStopMarker(
+                            stop: stop,
+                            selected:
+                                controller.selectedHistoryStop.value == i,
+                            onTap: () =>
+                                controller.onHistoryNumberedStopTap(i),
+                          ),
+                        ),
+                    // Moving marker (mobile marker2.png, 40 px in a 44 box).
                     Marker(
                       point: vehiclePos,
-                      width: 80,
-                      height: 80,
-                      alignment: Alignment.center,
+                      width: 44,
+                      height: 44,
                       child: GestureDetector(
                         onTap: controller.onHistoryCarTap,
-                        // Top-view car, front facing the direction of travel.
                         child: Transform.rotate(
                           angle: controller.historyTopViewRotationRad,
-                          child: const Center(child: TopViewCar()),
+                          child: Image.asset(
+                            'assets/images/marker2.png',
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
-                    // Pin on the route point the user tapped
+                    // Point the user tapped on the route.
                     if (controller.historyTapPoint.value != null)
                       Marker(
                         point: controller.historyTapPoint.value!,
-                        width: 28,
-                        height: 28,
-                        alignment: Alignment.topCenter,
-                        child: const Icon(
-                          Icons.location_on,
-                          size: 28,
-                          color: Color(0xFFE53935),
+                        width: 18,
+                        height: 18,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF009FE3),
+                              width: 4,
+                            ),
+                          ),
                         ),
                       ),
                   ],
@@ -289,10 +287,6 @@ class HistoryViewContent extends StatelessWidget {
               right: 16,
               child: Column(
                 children: [
-                  _HistoryMapIconButton(
-                    icon: Icons.map_outlined,
-                    onTap: controller.cycleMapLayer,
-                  ),
                   _HistoryMapIconButton(
                     icon: Icons.location_on_outlined,
                     onTap: controller.toggleHistoryPoints,
@@ -1160,27 +1154,147 @@ class HistoryViewContent extends StatelessWidget {
   }
 }
 
-/// Small square "P" marker for a parking stop on the history route.
-class _HistoryParkingBadge extends StatelessWidget {
-  const _HistoryParkingBadge();
+/// Mapbox streets tiles (the mobile History map).
+final String _historyTileUrl =
+    'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x'
+    '?access_token=${ApiConfig.mapboxAccessToken}';
+
+/// Numbered stop on the history route (mobile `_HistoryStopMarker`): a red
+/// square with the stop number; when selected, a card above it with the
+/// arrival / departure time, duration, coordinates and address.
+class _HistoryStopMarker extends StatelessWidget {
+  final Map<String, dynamic> stop;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HistoryStopMarker({
+    required this.stop,
+    required this.selected,
+    required this.onTap,
+  });
+
+  static String _time(String raw) {
+    final t = AppSettings.parseDateTime(raw.trim());
+    if (t == null) return raw.trim().isEmpty ? '–' : raw;
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final d = t.day.toString().padLeft(2, '0');
+    return '$d ${months[t.month - 1]} ${t.year} ${AppSettings.to.timeOfDay(t)}';
+  }
+
+  Widget _row(String label, String value, {Color? color, int lines = 1}) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 88,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: lines,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: color ?? Colors.black87),
+            ),
+          ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: const Color(0xFF00A859),
-        borderRadius: BorderRadius.circular(4), // square P box
-        border: Border.all(color: Colors.white, width: 1.5),
-        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 3)],
-      ),
-      child: const Text(
-        'P',
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
+    final p = stop['point'] as LatLng;
+    final address = (stop['address'] as String?)?.trim() ?? '';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (selected) ...[
+            Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 236,
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _row('Arrival Time:', _time('${stop['arrival']}')),
+                    const SizedBox(height: 4),
+                    _row('Departure Time:', _time('${stop['departure']}')),
+                    const SizedBox(height: 4),
+                    _row(
+                      'Duration:',
+                      '${stop['duration']}'.isEmpty ? '–' : '${stop['duration']}',
+                    ),
+                    const SizedBox(height: 4),
+                    _row(
+                      'Latlong:',
+                      '${p.latitude.toStringAsFixed(6)}, ${p.longitude.toStringAsFixed(6)}',
+                      color: const Color(0xFF009FE3),
+                    ),
+                    const SizedBox(height: 4),
+                    _row(
+                      'Address:',
+                      address.isEmpty ? 'Address unavailable' : address,
+                      lines: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.red.shade700,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.white, width: 1.5),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 3,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Text(
+              '${stop['number']}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,19 @@ class TravelDistanceChart extends StatelessWidget {
 
   const TravelDistanceChart({super.key, required this.dataPoints});
 
+  static const int _ticks = 9;
+
+  /// Top of the axis: the scale the bars use.
+  double get _axisMax {
+    if (dataPoints.isEmpty) return 144;
+    final m = dataPoints.first.maxKm;
+    return m > 0 ? m : 1;
+  }
+
+  static String _tickLabel(double v) => v >= 10 || v == v.roundToDouble()
+      ? v.round().toString()
+      : v.toStringAsFixed(1);
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -29,6 +42,17 @@ class TravelDistanceChart extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          if (dataPoints.isEmpty)
+            const SizedBox(
+              height: 180,
+              child: Center(
+                child: Text(
+                  'No travel distance data',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF667085)),
+                ),
+              ),
+            )
+          else
           SizedBox(
             height: 180,
             child: Row(
@@ -37,47 +61,17 @@ class TravelDistanceChart extends StatelessWidget {
                 Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.end,
-                  children: const [
-                    Text(
-                      '144',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '128',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '112',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '96',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '80',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '64',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '48',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '32',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '16',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
-                    Text(
-                      '0',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF667085)),
-                    ),
+                  // Labels from the chart's real scale (they were fixed at
+                  // 144..0 before, whatever the bars showed).
+                  children: [
+                    for (int i = _ticks; i >= 0; i--)
+                      Text(
+                        _tickLabel(_axisMax * i / _ticks),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF667085),
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(width: 8),

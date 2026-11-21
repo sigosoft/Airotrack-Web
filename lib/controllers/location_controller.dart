@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import '../models/vehicle_model.dart';
+import '../services/app_settings.dart';
 import 'home_controller.dart';
 
 enum AiroMapStyle {
@@ -130,7 +131,14 @@ VehicleMarkerStatus evaluateVehicleStatus(Vehicle v) {
   if (s.contains('no data') || s.contains('nodata')) {
     return VehicleMarkerStatus.noData;
   }
+  // The server status as is (the mobile app uses v.status directly).
+  if (s.contains('run') || s.contains('moving')) {
+    return VehicleMarkerStatus.running;
+  }
+  if (s.contains('idle')) return VehicleMarkerStatus.idle;
+  if (s.contains('stop')) return VehicleMarkerStatus.stopped;
 
+  // No status text: work it out from ignition and speed.
   final speedVal =
       double.tryParse(v.speed.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
   if (v.isIgnitionOn) {
@@ -194,11 +202,29 @@ class LocationController extends GetxController {
     _loadPreferences();
 
     _vehiclesWorker = ever(_home.allVehicles, (_) => _onVehiclesChanged());
+    // Profile > General Settings > Map Type changes this map too.
+    _mapTypeWorker = ever(
+      AppSettings.to.mapType,
+      (_) => _applyGeneralMapType(save: true),
+    );
+  }
+
+  Worker? _mapTypeWorker;
+
+  void _applyGeneralMapType({bool save = false}) {
+    currentStyle.value = switch (AppSettings.to.mapType.value) {
+      'Satellite' => AiroMapStyle.mapboxSatellite,
+      'Terrain' => AiroMapStyle.mapboxOutdoors,
+      _ => AiroMapStyle.mapboxStreets,
+    };
+    trafficEnabled.value = false;
+    if (save) _saveMapStyle();
   }
 
   @override
   void onClose() {
     _vehiclesWorker?.dispose();
+    _mapTypeWorker?.dispose();
     super.onClose();
   }
 
@@ -206,7 +232,10 @@ class LocationController extends GetxController {
     try {
       final prefs = await SharedPreferences.getInstance();
       final mapType = prefs.getString(_kMapTypeKey);
-      if (mapType != null) {
+      if (mapType == null) {
+        await AppSettings.to.ready;
+        _applyGeneralMapType();
+      } else {
         if (mapType == 'satellite') {
           currentStyle.value = AiroMapStyle.mapboxSatellite;
         } else if (mapType == 'terrain' || mapType == 'outdoors') {
@@ -255,7 +284,16 @@ class LocationController extends GetxController {
     }
   }
 
+  /// Mobile default centre when there is nothing to show yet.
+  static const LatLng defaultCenter = LatLng(11.8745, 75.3704);
+  bool _didFirstFit = false;
+
   void _onVehiclesChanged() {
+    // First vehicles in: fit them all once (mobile `_onVehiclesChanged`).
+    if (!_didFirstFit && lastCenter == null && mapVehicles.isNotEmpty) {
+      _didFirstFit = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => fitAll());
+    }
     if (_following.value && selectedVehicleId.value.isNotEmpty) {
       final match = _home.vehicles.firstWhereOrNull(
         (v) => v.deviceId == selectedVehicleId.value,
@@ -325,7 +363,7 @@ class LocationController extends GetxController {
       if (lastCenter != null) {
         _mapController?.move(lastCenter!, lastZoom);
       } else {
-        _mapController?.move(const LatLng(20.5937, 78.9629), 5.0);
+        _mapController?.move(defaultCenter, 13.0);
       }
       return;
     }
@@ -340,6 +378,7 @@ class LocationController extends GetxController {
       CameraFit.bounds(
         bounds: bounds,
         padding: const EdgeInsets.fromLTRB(80, 200, 90, 200),
+        maxZoom: 16, // mobile fitAll
       ),
     );
   }
@@ -420,6 +459,11 @@ class LocationController extends GetxController {
   List<VehicleGroup> groupedVehicles(double zoom) {
     final list = visibleVehicles;
     if (list.isEmpty) return [];
+    // As on the mobile app: the selected vehicle anchors its group (its
+    // plate is the one shown) and that group is drawn last, on top.
+    final sel = selectedVehicleId.value;
+    final si = list.indexWhere((v) => v.deviceId == sel);
+    if (si > 0) list.insert(0, list.removeAt(si));
 
     const maxDx = 140.0;
     const maxDy = 60.0;
@@ -453,6 +497,12 @@ class LocationController extends GetxController {
       }
     }
 
+    final top = groups.indexWhere(
+      (g) => g.vehicles.any((v) => v.deviceId == sel),
+    );
+    if (top >= 0 && top != groups.length - 1) {
+      groups.add(groups.removeAt(top));
+    }
     return groups;
   }
 }

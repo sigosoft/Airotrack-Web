@@ -51,7 +51,7 @@ class DashboardModel {
   final List<TravelDistanceDataPoint> travelDistanceData;
 
   DashboardModel({
-    this.userName = 'John Doe',
+    this.userName = 'User',
     required this.summaryList,
     required this.vehicleList,
     required this.engineHoursData,

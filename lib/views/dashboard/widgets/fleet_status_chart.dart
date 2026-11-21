@@ -9,10 +9,10 @@ class FleetStatusChart extends StatelessWidget {
   // Status colours, same as the Airotrack mobile app. The dashboard API
   // sends counts only; if it ever sends a colour, that colour is used.
   static const Map<String, int> _defaultColors = {
-    'running': 0xFF34A853, // green
+    'running': 0xFF10B25B, // green (mobile)
     'stopped': 0xFFEA4335, // red
-    'idle': 0xFFFBBC05, // yellow
-    'expired': 0xFFF58A2E, // orange
+    'idle': 0xFFFABC05, // yellow (mobile)
+    'expired': 0xFFFB8C00, // orange (mobile)
     'inactive': 0xFF4285F4, // blue
     'nodata': 0xFF9E9E9E, // grey
   };
@@ -207,6 +207,19 @@ class _DonutChartPainter extends CustomPainter {
 
     final safeTotal = total > 0 ? total : 1;
     double startAngle = -pi / 2;
+
+    // Nothing to show: a grey ring, as on the mobile app.
+    if (slices.every((s) => s.count <= 0)) {
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = const Color(0xFFE4E7EC)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth,
+      );
+      return;
+    }
 
     for (final slice in slices) {
       final ratio = slice.count / safeTotal;

@@ -5,6 +5,9 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../config/api_config.dart';
+import '../../../services/app_settings.dart';
+import '../../../controllers/geofence_controller.dart';
+import '../../../controllers/home_controller.dart';
 import '../../../controllers/vehicle_detail_controller.dart';
 import 'map_bottom_action_cards.dart';
 import 'top_view_car.dart';
@@ -98,7 +101,9 @@ class TrackingMapContainer extends StatelessWidget {
                           controller.vehicleDetail.value.longitude!,
                         )
                       : const LatLng(10.038, 76.325),
-                  initialZoom: 16.0,
+                  initialZoom: VehicleDetailController.liveFollowZoom,
+                  minZoom: 3,
+                  maxZoom: 20,
                   onPositionChanged: (camera, hasGesture) {
                     controller.onLiveCameraChanged(camera, hasGesture);
                   },
@@ -120,17 +125,20 @@ class TrackingMapContainer extends StatelessWidget {
                       userAgentPackageName: 'com.airotrack.app',
                     ),
                   ),
+                  // Geofences linked to this vehicle (as on the mobile Track).
+                  const VehicleGeofenceOverlay(),
                   // Today's travelled route (route button)
                   Obx(
                     () =>
                         controller.showLiveRoute.value &&
-                            controller.liveTodayRoute.length >= 2
+                            controller.liveTrail.length >= 2
                         ? PolylineLayer(
                             polylines: [
                               Polyline(
-                                points: controller.liveTodayRoute.toList(),
-                                color: const Color(0xFF4FC3F7),
-                                strokeWidth: 3.5,
+                                // Trail of the moving car (mobile style).
+                                points: controller.liveTrail.toList(),
+                                color: const Color(0xFF009FE3),
+                                strokeWidth: 4,
                               ),
                             ],
                           )
@@ -186,7 +194,11 @@ class TrackingMapContainer extends StatelessWidget {
                             onTap: controller.toggleMapDialog,
                             child: Transform.rotate(
                               angle: controller.liveTopViewRotationRad,
-                              child: const Center(child: TopViewCar()),
+                              child: Center(
+                                child: TopViewCar(
+                                  status: controller.liveVehicleStatus,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -279,14 +291,14 @@ class TrackingMapContainer extends StatelessWidget {
                             _buildDialogRow(
                               'Device Time:',
                               detail.deviceTime.isNotEmpty
-                                  ? detail.deviceTime
+                                  ? AppSettings.to.anyTime(detail.deviceTime)
                                   : 'N/A',
                             ),
                             const SizedBox(height: 6),
                             _buildDialogRow(
                               'Server Time:',
                               detail.serverTime.isNotEmpty
-                                  ? detail.serverTime
+                                  ? AppSettings.to.anyTime(detail.serverTime)
                                   : 'N/A',
                             ),
                             const SizedBox(height: 6),
@@ -476,6 +488,98 @@ class TrackingMapContainer extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Draws the geofences linked to the vehicle open on Track
+/// (GET vehicle_geofences), reloading when another vehicle is opened.
+class VehicleGeofenceOverlay extends StatefulWidget {
+  const VehicleGeofenceOverlay({super.key});
+
+  @override
+  State<VehicleGeofenceOverlay> createState() => _VehicleGeofenceOverlayState();
+}
+
+class _VehicleGeofenceOverlayState extends State<VehicleGeofenceOverlay> {
+  static const _fill = Color(0x267A5AF8);
+  static const _line = Color(0xFF7A5AF8);
+  String? _loadedImei;
+
+  GeofenceController get _geofences => Get.isRegistered<GeofenceController>()
+      ? Get.find<GeofenceController>()
+      : Get.put(GeofenceController());
+
+  void _loadFor(String imei) {
+    if (imei == _loadedImei) return;
+    _loadedImei = imei;
+    final v = Get.isRegistered<HomeController>()
+        ? Get.find<HomeController>().vehicles.firstWhereOrNull(
+            (veh) => veh.deviceId == imei,
+          )
+        : null;
+    final geofences = _geofences;
+    if (v == null) {
+      geofences.clearVehicleGeofenceOverlay();
+    } else {
+      geofences.fetchVehicleGeofences(v.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = Get.find<VehicleDetailController>();
+    final geofences = _geofences;
+    return Obx(() {
+      // Rebuilds when the open vehicle changes.
+      controller.vehicleDetail.value;
+      final imei = controller.activeImei;
+      if (imei != _loadedImei) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _loadFor(imei);
+        });
+      }
+      final list = geofences.vehicleGeofencesMapOverlayList.toList();
+      final circles = <CircleMarker>[];
+      final polygons = <Polygon>[];
+      for (final g in list) {
+        if (g.shape == 'circle') {
+          final c = g.center;
+          if (c == null || g.radiusMeters <= 0) continue;
+          circles.add(
+            CircleMarker(
+              point: c,
+              radius: g.radiusMeters,
+              useRadiusInMeter: true,
+              color: _fill,
+              borderColor: _line,
+              borderStrokeWidth: 2,
+            ),
+          );
+        } else if (g.outline.length >= 3) {
+          polygons.add(
+            Polygon(
+              points: g.outline,
+              color: _fill,
+              borderColor: _line,
+              borderStrokeWidth: 2,
+              isFilled: true,
+              label: g.name,
+              labelStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: _line,
+              ),
+            ),
+          );
+        }
+      }
+      return Stack(
+        children: [
+          if (polygons.isNotEmpty) PolygonLayer(polygons: polygons),
+          if (circles.isNotEmpty) CircleLayer(circles: circles),
+        ],
+      );
+    });
   }
 }
 

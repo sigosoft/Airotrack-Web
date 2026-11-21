@@ -100,7 +100,8 @@ class HomeController extends GetxController {
 
   void _startAutoUpdate() {
     _autoUpdateTimer?.cancel();
-    _autoUpdateTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Every 3 s, like the mobile app's Home list.
+    _autoUpdateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!isLoading.value && !isMoreLoading.value) {
         fetchVehicles(type: selectedType.value, isSilent: true);
       }
@@ -177,13 +178,11 @@ class HomeController extends GetxController {
           if (running != null) runningCount.value = running.toString();
           if (stopped != null) stoppedCount.value = stopped.toString();
           if (idle != null) idleCount.value = idle.toString();
-          final exp = expired ?? inactive;
-          if (exp != null) {
-            expiredCount.value = exp.toString();
-            inactiveCount.value = exp.toString();
-          }
+          // Separate counts (Expired and Inactive were merged before).
+          if (expired != null) expiredCount.value = expired.toString();
+          if (inactive != null) inactiveCount.value = inactive.toString();
         } else if (rawStats is List) {
-          int total = 0, running = 0, stopped = 0, idle = 0, exp = 0;
+          int total = 0, running = 0, stopped = 0, idle = 0, exp = 0, inact = 0;
           for (final item in rawStats) {
             if (item is Map) {
               final label = (item['status'] ?? item['name'] ?? item['title'] ?? item['key'] ?? '').toString().toLowerCase();
@@ -191,17 +190,20 @@ class HomeController extends GetxController {
               if (label.startsWith('run') || label == 'moving') running = cnt;
               else if (label.startsWith('stop') || label == 'parked') stopped = cnt;
               else if (label.startsWith('idl')) idle = cnt;
-              else if (label.startsWith('exp') || label.startsWith('inact')) exp = cnt;
+              else if (label.startsWith('exp')) exp = cnt;
+              else if (label.startsWith('inact')) {
+                inact = cnt;
+              }
               else if (label.startsWith('tot') || label == 'all') total = cnt;
             }
           }
-          if (total == 0) total = running + stopped + idle + exp;
+          if (total == 0) total = running + stopped + idle + exp + inact;
           totalCount.value = total.toString();
           runningCount.value = running.toString();
           stoppedCount.value = stopped.toString();
           idleCount.value = idle.toString();
           expiredCount.value = exp.toString();
-          inactiveCount.value = exp.toString();
+          inactiveCount.value = inact.toString();
         } else if (selectedType.value == null && (totalCount.value.isEmpty || totalCount.value == '0')) {
           totalCount.value = vehicles.length.toString();
           runningCount.value = vehicles
@@ -216,12 +218,14 @@ class HomeController extends GetxController {
               .where((v) => v.status == 'Stopped' || v.status == 'Stop')
               .length
               .toString();
-          final exp = vehicles
-              .where((v) => v.status == 'Expired' || v.status == 'Inactive')
+          expiredCount.value = vehicles
+              .where((v) => v.status == 'Expired')
               .length
               .toString();
-          expiredCount.value = exp;
-          inactiveCount.value = exp;
+          inactiveCount.value = vehicles
+              .where((v) => v.status == 'Inactive')
+              .length
+              .toString();
         }
       }
     } catch (e) {

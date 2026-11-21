@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
+import '../utils/session_guard.dart';
 
 class DioClient {
   static final DioClient _instance = DioClient._internal();
@@ -36,7 +37,7 @@ class DioClient {
             final tag = _endpointTag(options.path);
             debugPrint('==================== [$tag CALL] ====================');
             debugPrint('${options.method.toUpperCase()} ${options.uri}');
-            debugPrint('Headers: ${options.headers}');
+            debugPrint('Headers: ${_safeHeaders(options.headers)}');
             if (options.queryParameters.isNotEmpty) {
               debugPrint('Query Parameters: ${options.queryParameters}');
             }
@@ -50,6 +51,9 @@ class DioClient {
         },
         onResponse: (response, handler) {
           final path = response.requestOptions.path;
+          if (SessionGuard.shouldHandle(path, response.statusCode)) {
+            SessionGuard.handleUnauthorized();
+          }
           if (_shouldLog(path)) {
             final tag = _endpointTag(path);
             debugPrint(
@@ -72,6 +76,9 @@ class DioClient {
         },
         onError: (DioException e, handler) {
           final path = e.requestOptions.path;
+          if (SessionGuard.shouldHandle(path, e.response?.statusCode)) {
+            SessionGuard.handleUnauthorized();
+          }
           if (_shouldLog(path)) {
             final tag = _endpointTag(path);
             debugPrint(
@@ -79,7 +86,7 @@ class DioClient {
             );
             debugPrint('URL: ${e.requestOptions.uri}');
             debugPrint('Status Code: ${e.response?.statusCode}');
-            debugPrint('Headers: ${e.requestOptions.headers}');
+            debugPrint('Headers: ${_safeHeaders(e.requestOptions.headers)}');
             debugPrint('Error: ${e.message}');
             if (e.response?.data != null) {
               try {
@@ -100,6 +107,12 @@ class DioClient {
     );
   }
 
+  /// Headers for the debug log, with the bearer token hidden.
+  static Map<String, dynamic> _safeHeaders(Map<String, dynamic> headers) => {
+    for (final e in headers.entries)
+      e.key: e.key.toLowerCase() == 'authorization' ? 'Bearer ***' : e.value,
+  };
+
   static bool _shouldLog(String path) {
     if (path.contains(ApiEndPoints.profile)) return true;
     if (path.contains(ApiEndPoints.dashboard)) return true;
@@ -116,9 +129,6 @@ class DioClient {
 
   Future<void> updateToken(String token) async {
     _token = token;
-    debugPrint('==================== [AUTH TOKEN] ====================');
-    debugPrint('Token: $token');
-    debugPrint('======================================================');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);
   }
@@ -130,13 +140,7 @@ class DioClient {
 
   Future<String?> _loadToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    if (token != null && token.isNotEmpty) {
-      debugPrint('==================== [AUTH TOKEN] ====================');
-      debugPrint('Token: $token');
-      debugPrint('======================================================');
-    }
-    return token;
+    return prefs.getString('token');
   }
 
   Future<void> clearToken() async {

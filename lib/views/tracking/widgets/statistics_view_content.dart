@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airotrack_web/services/app_settings.dart';
 import 'package:get/get.dart';
 
 import '../../../constants/app_assets.dart';
@@ -364,7 +365,7 @@ class _StatisticsViewContentState extends State<StatisticsViewContent> {
                               final card = statCards[index];
                               return _buildStatCard(
                                 title: card['title']!,
-                                value: card['value']!,
+                                value: AppSettings.to.units(card['value']!),
                                 assetPath: card['asset']!,
                               );
                             },

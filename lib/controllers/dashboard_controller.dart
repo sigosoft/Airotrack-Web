@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../config/dio_client.dart';
 import '../models/dashboard_model.dart';
+import '../services/odometer_offset_service.dart';
 import 'home_controller.dart';
 import 'vehicle_detail_controller.dart';
 
@@ -66,6 +66,16 @@ class DashboardController extends GetxController {
   final RxList<Map<String, dynamic>> geofenceReports =
       <Map<String, dynamic>>[].obs;
   final RxBool isGeofenceReportLoading = false.obs;
+
+  /// Alert report rows: {id, datetime, alert, event, content, vehicle, imei}.
+  final RxList<Map<String, dynamic>> alertReports =
+      <Map<String, dynamic>>[].obs;
+  final RxBool isAlertReportLoading = false.obs;
+
+  /// Total alerts in the range on the server (the API returns at most
+  /// [_alertReportLimit] of them, newest first).
+  final RxInt alertReportTotal = 0.obs;
+  static const int _alertReportLimit = 500;
 
   late final HomeController homeController;
 
@@ -242,6 +252,7 @@ class DashboardController extends GetxController {
         : Get.put(HomeController());
 
     ever(homeController.vehicles, (_) {
+      _syncSelectedVehicle();
       _updateDashboardData();
     });
     ever(homeController.totalCount, (_) => _updateDashboardData());
@@ -253,6 +264,36 @@ class DashboardController extends GetxController {
     _loadUserName();
     fetchDashboardApi();
     _startDashboardAutoUpdate();
+  }
+
+  /// IMEI of the vehicle chosen on the dashboard. The Home list refreshes
+  /// every few seconds and can reorder, so the choice is kept by IMEI (as on
+  /// the mobile app) and [selectedVehicleIndex] follows it.
+  final RxString selectedVehicleImei = ''.obs;
+  bool _firstDashboardFetchDone = false;
+
+  void _syncSelectedVehicle() {
+    final list = homeController.vehicles;
+    if (list.isEmpty) return;
+    if (selectedVehicleImei.value.isEmpty) {
+      final idx = selectedVehicleIndex.value < list.length
+          ? selectedVehicleIndex.value
+          : 0;
+      selectedVehicleImei.value = list[idx].deviceId;
+    } else {
+      final idx = list.indexWhere(
+        (v) => v.deviceId == selectedVehicleImei.value,
+      );
+      if (idx >= 0 && idx != selectedVehicleIndex.value) {
+        selectedVehicleIndex.value = idx;
+      }
+    }
+    // The first vehicles have arrived: load the charts for the first one
+    // (the dashboard API is never called with an empty IMEI).
+    if (!_firstDashboardFetchDone) {
+      _firstDashboardFetchDone = true;
+      fetchDashboardApi(isSilent: true);
+    }
   }
 
   void _startDashboardAutoUpdate() {
@@ -337,16 +378,22 @@ class DashboardController extends GetxController {
   }
 
   void _updateDashboardData({bool forceIndexSelection = false}) {
-    final total =
-        int.tryParse(homeController.totalCount.value) ??
-        homeController.vehicles.length;
+    // Same counts as the Fleet Status chart (dashboard fleet_status) when
+    // they are in; the Home list's counts otherwise.
+    final total = fleetTotal.value > 0
+        ? fleetTotal.value
+        : (int.tryParse(homeController.totalCount.value) ??
+              homeController.vehicles.length);
     final running =
+        _fleetCountFor('running') ??
         int.tryParse(homeController.runningCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Running').length;
     final stopped =
+        _fleetCountFor('stopped') ??
         int.tryParse(homeController.stoppedCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Stopped').length;
     final idle =
+        _fleetCountFor('idle') ??
         int.tryParse(homeController.idleCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Idle').length;
     final inactive =
@@ -358,11 +405,15 @@ class DashboardController extends GetxController {
     final expired =
         _fleetCountFor('expired') ??
         int.tryParse(homeController.expiredCount.value) ??
-        inactive;
+        homeController.vehicles
+            .where((v) => v.status.toLowerCase() == 'expired')
+            .length;
     final noData =
         _fleetCountFor('nodata') ??
         homeController.vehicles
-            .where((v) => v.status == 'No Data' || v.status == 'NoData')
+            .where(
+              (v) => v.status.toLowerCase().replaceAll(' ', '') == 'nodata',
+            )
             .length;
 
     List<VehicleItem> items = [];
@@ -480,29 +531,6 @@ class DashboardController extends GetxController {
     return all.where((c) => !_hiddenStatusCards.contains(c.title)).toList();
   }
 
-  /// Rounds a chart maximum up to a clean number (e.g. 360.6 -> 400,
-  /// 117 -> 120, 0 -> 10).
-  static double _niceCeil(double v) {
-    if (v <= 0) return 10;
-    final mag = pow(10, (log(v) / ln10).floor()).toDouble();
-    for (final step in [
-      1.0,
-      1.2,
-      1.5,
-      2.0,
-      2.5,
-      3.0,
-      4.0,
-      5.0,
-      6.0,
-      8.0,
-      10.0,
-    ]) {
-      if (step * mag >= v) return step * mag;
-    }
-    return 10 * mag;
-  }
-
   void toggleReportsExpand() {
     isReportsExpanded.value = !isReportsExpanded.value;
   }
@@ -524,6 +552,71 @@ class DashboardController extends GetxController {
       fetchOverSpeedReports();
     } else if (index == 6) {
       fetchGeofenceReports();
+    } else if (index == 7) {
+      fetchAlertReports();
+    }
+  }
+
+  /// GET reports/alerts?imei&from_date&to_date&limit for the selected
+  /// vehicle. The API has no paging (it returns up to `limit` rows, newest
+  /// first, plus `total`), so the view pages through the rows itself.
+  Future<void> fetchAlertReports() async {
+    isAlertReportLoading.value = true;
+    try {
+      String imei = '';
+      String plate = '';
+      if (homeController.vehicles.isNotEmpty) {
+        final idx = selectedVehicleIndex.value < homeController.vehicles.length
+            ? selectedVehicleIndex.value
+            : 0;
+        imei = homeController.vehicles[idx].deviceId;
+        plate = homeController.vehicles[idx].plateNumber;
+      }
+      if (imei.isEmpty) {
+        alertReports.clear();
+        alertReportTotal.value = 0;
+        return;
+      }
+      final response = await DioClient().get(
+        ApiEndPoints.alertsReport,
+        queryParameters: {
+          'imei': imei,
+          'from_date': reportStartDate.value,
+          'to_date': reportEndDate.value,
+          'limit': _alertReportLimit,
+        },
+      );
+      final body = response.data;
+      final data = body is Map ? body['data'] : null;
+      final raw = data is Map ? data['items'] : null;
+      final vehicle = data is Map && data['vehicle'] is Map
+          ? (data['vehicle']['vehicle_number'] ?? plate).toString()
+          : plate;
+      final rows = <Map<String, dynamic>>[];
+      if (raw is List) {
+        for (final item in raw.whereType<Map>()) {
+          final alert = (item['alert'] ?? '').toString();
+          rows.add({
+            'id': item['id'],
+            'datetime': (item['datetime'] ?? '').toString(),
+            'alert': alert,
+            'event': (item['event'] ?? alert).toString(),
+            'content': (item['content'] ?? '').toString(),
+            'vehicle': vehicle,
+            'imei': (item['imei'] ?? imei).toString(),
+          });
+        }
+      }
+      alertReports.assignAll(rows);
+      alertReportTotal.value = data is Map
+          ? int.tryParse('${data['total']}') ?? rows.length
+          : rows.length;
+    } catch (e) {
+      debugPrint('Error fetching alert reports: $e');
+      alertReports.clear();
+      alertReportTotal.value = 0;
+    } finally {
+      isAlertReportLoading.value = false;
     }
   }
 
@@ -577,6 +670,9 @@ class DashboardController extends GetxController {
 
   void selectVehicle(int index) {
     selectedVehicleIndex.value = index;
+    if (index >= 0 && index < homeController.vehicles.length) {
+      selectedVehicleImei.value = homeController.vehicles[index].deviceId;
+    }
     _updateDashboardData(forceIndexSelection: true);
     fetchDashboardApi();
   }
@@ -593,6 +689,7 @@ class DashboardController extends GetxController {
       if (!isSilent) isLoading.value = true;
 
       String selectedImei = imei ?? '';
+      if (selectedImei.isEmpty) selectedImei = selectedVehicleImei.value;
       if (selectedImei.isEmpty && homeController.vehicles.isNotEmpty) {
         final idx = selectedVehicleIndex.value < homeController.vehicles.length
             ? selectedVehicleIndex.value
@@ -600,25 +697,24 @@ class DashboardController extends GetxController {
         final veh = homeController.vehicles[idx];
         selectedImei = veh.deviceId;
       }
+      // No vehicle yet: the API needs an IMEI (mobile skips the call too).
+      if (selectedImei.isEmpty) return;
 
+      // Last 7 days including today, yyyy-MM-dd, like the mobile app. The
+      // report screens' dates are not used here.
+      String ymd(DateTime d) =>
+          "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
       final now = DateTime.now();
-      final defaultToDate =
-          "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-      final sevenDaysAgo = now.subtract(const Duration(days: 7));
-      final defaultFromDate =
-          "${sevenDaysAgo.year}-${sevenDaysAgo.month.toString().padLeft(2, '0')}-${sevenDaysAgo.day.toString().padLeft(2, '0')}";
+      final defaultToDate = ymd(now);
+      final defaultFromDate = ymd(now.subtract(const Duration(days: 6)));
 
       final reqImei = selectedImei;
       final reqFromDate = (fromDate != null && fromDate.isNotEmpty)
           ? fromDate
-          : (reportStartDate.value.isNotEmpty
-                ? reportStartDate.value
-                : defaultFromDate);
+          : defaultFromDate;
       final reqToDate = (toDate != null && toDate.isNotEmpty)
           ? toDate
-          : (reportEndDate.value.isNotEmpty
-                ? reportEndDate.value
-                : defaultToDate);
+          : defaultToDate;
       final reqDays = (days != null && days.isNotEmpty) ? days : '7';
 
       final response = await DioClient().get(
@@ -790,10 +886,12 @@ class DashboardController extends GetxController {
     if (statIdle != null) {
       homeController.idleCount.value = statIdle.toString();
     }
-    final statExp = statExpired ?? statInactive;
-    if (statExp != null) {
-      homeController.expiredCount.value = statExp.toString();
-      homeController.inactiveCount.value = statExp.toString();
+    // Expired and Inactive are separate counts (they were merged before).
+    if (statExpired != null) {
+      homeController.expiredCount.value = statExpired.toString();
+    }
+    if (statInactive != null) {
+      homeController.inactiveCount.value = statInactive.toString();
     }
 
     // Engine hours
@@ -863,7 +961,8 @@ class DashboardController extends GetxController {
           0,
           (a, p) => p.distanceKm > a ? p.distanceKm : a,
         );
-        scale = _niceCeil(top);
+        // Mobile: the largest day x 1.15, rounded up.
+        scale = top > 0 ? (top * 1.15).ceilToDouble() : 10;
       }
       distanceList = [
         for (final p in distanceList)
@@ -944,18 +1043,22 @@ class DashboardController extends GetxController {
 
     final total =
         statTotal ??
+        (fleetTotal.value > 0 ? fleetTotal.value : null) ??
         int.tryParse(homeController.totalCount.value) ??
         homeController.vehicles.length;
     final running =
         statRunning ??
+        _fleetCountFor('running') ??
         int.tryParse(homeController.runningCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Running').length;
     final stopped =
         statStopped ??
+        _fleetCountFor('stopped') ??
         int.tryParse(homeController.stoppedCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Stopped').length;
     final idle =
         statIdle ??
+        _fleetCountFor('idle') ??
         int.tryParse(homeController.idleCount.value) ??
         homeController.vehicles.where((v) => v.status == 'Idle').length;
     final inactive =
@@ -967,12 +1070,16 @@ class DashboardController extends GetxController {
         statExpired ??
         _fleetCountFor('expired') ??
         int.tryParse(homeController.expiredCount.value) ??
-        inactive;
+        homeController.vehicles
+            .where((v) => v.status.toLowerCase() == 'expired')
+            .length;
     final noData =
         statNoData ??
         _fleetCountFor('nodata') ??
         homeController.vehicles
-            .where((v) => v.status == 'No Data' || v.status == 'NoData')
+            .where(
+              (v) => v.status.toLowerCase().replaceAll(' ', '') == 'nodata',
+            )
             .length;
 
     dashboardData.value = DashboardModel(
@@ -989,12 +1096,10 @@ class DashboardController extends GetxController {
       vehicleList: vehicleItems.isNotEmpty
           ? vehicleItems
           : dashboardData.value.vehicleList,
-      engineHoursData: engineList.isNotEmpty
-          ? engineList
-          : dashboardData.value.engineHoursData,
-      travelDistanceData: distanceList.isNotEmpty
-          ? distanceList
-          : dashboardData.value.travelDistanceData,
+      // A response without chart data shows the empty state instead of
+      // keeping the previous vehicle's chart.
+      engineHoursData: engineList,
+      travelDistanceData: distanceList,
     );
   }
 
@@ -1073,10 +1178,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseIgnitionReportItem(item, parentMap));
+            parsedList.add(
+              _parseIgnitionReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseIgnitionReportItem(
@@ -1266,10 +1384,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseStoppageReportItem(item, parentMap));
+            parsedList.add(
+              _parseStoppageReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseStoppageReportItem(
@@ -1442,10 +1573,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseTripReportItem(item, parentMap));
+            parsedList.add(
+              _parseTripReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseTripReportItem(Map<String, dynamic>.from(item), parentMap),
@@ -1631,10 +1775,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseDailyReportItem(item, parentMap));
+            parsedList.add(
+              _parseDailyReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseDailyReportItem(Map<String, dynamic>.from(item), parentMap),
@@ -1967,10 +2124,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseSummaryReportItem(item, parentMap));
+            parsedList.add(
+              _parseSummaryReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseSummaryReportItem(
@@ -2290,10 +2460,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseOverSpeedReportItem(item, parentMap));
+            parsedList.add(
+              _parseOverSpeedReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseOverSpeedReportItem(
@@ -2475,10 +2658,23 @@ class DashboardController extends GetxController {
           }
         }
 
+        final odoOffset = await OdometerOffsetService.offsetFor(selectedImei);
+
+        final odoParent = parentMap == null
+
+            ? null
+
+            : OdometerOffsetService.applyTo(parentMap, odoOffset);
+
         List<Map<String, dynamic>> parsedList = [];
         for (var item in rawList) {
           if (item is Map<String, dynamic>) {
-            parsedList.add(_parseGeofenceReportItem(item, parentMap));
+            parsedList.add(
+              _parseGeofenceReportItem(
+                OdometerOffsetService.applyTo(item, odoOffset),
+                odoParent,
+              ),
+            );
           } else if (item is Map) {
             parsedList.add(
               _parseGeofenceReportItem(

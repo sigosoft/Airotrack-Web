@@ -41,7 +41,7 @@ void main() async {
   final token = prefs.getString('token');
   if (token != null && token.isNotEmpty) {
     debugPrint('==================== [APP INIT TOKEN] ====================');
-    debugPrint('Token: $token');
+    debugPrint('Token: (saved)');
     debugPrint('==========================================================');
     await DioClient().updateToken(token);
   }

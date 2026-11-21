@@ -90,11 +90,13 @@ class TrackingView extends StatelessWidget {
                         const SizedBox(height: 16),
 
                         // 2x2 Responsive Tracking Cards Grid
-                        Obx(
-                          () => LayoutBuilder(
+                        Obx(() {
+                          // Read here: Obx only sees observables read in its
+                          // own build, not inside the deferred LayoutBuilder.
+                          final trackingList =
+                              controller.trackingData.value.trackingVehicles;
+                          return LayoutBuilder(
                             builder: (context, constraints) {
-                              final trackingList = controller.trackingData.value.trackingVehicles;
-
                               if (constraints.maxWidth < 900) {
                                 return Column(
                                   children: trackingList.map((item) {
@@ -117,8 +119,8 @@ class TrackingView extends StatelessWidget {
                                 }).toList(),
                               );
                             },
-                          ),
-                        ),
+                          );
+                        }),
                       ],
                     ),
                   ),

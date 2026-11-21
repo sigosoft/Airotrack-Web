@@ -60,7 +60,6 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                 final item = settingsList[index];
                 final title = item['title'] as String;
                 final isHistory = title == 'Show History on Live';
-                final isIconSize = title == 'Vehicle Icon Size';
                 final open = _expanded == title;
 
                 return Container(
@@ -89,7 +88,7 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                             settings.setShowHistoryOnLive(
                               !settings.showHistoryOnLive.value,
                             );
-                          } else if (isIconSize) {
+                          } else {
                             setState(() => _expanded = open ? null : title);
                           }
                         },
@@ -120,6 +119,17 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                                   ),
                                 ),
                               ),
+                              // Current choice, as on the mobile app.
+                              if (!isHistory)
+                                Obx(
+                                  () => Text(
+                                    _currentLabel(title, settings),
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: Color(0xFF667085),
+                                    ),
+                                  ),
+                                ),
 
                               // Show History on Live: switch (like the app).
                               // Others: the dropdown arrow as before.
@@ -154,16 +164,16 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                       // Vehicle Icon Size options: Small / Medium / Large.
                       // One is always selected; the car on the Live and
                       // History maps uses that size.
-                      if (isIconSize && open)
+                      if (!isHistory && open)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(54, 0, 16, 10),
-                          child: Obx(
-                            () => Column(
+                          child: Obx(() {
+                            final opts = _options(title, settings);
+                            return Column(
                               children: [
-                                for (final size in AppSettings.iconSizes)
+                                for (final o in opts)
                                   InkWell(
-                                    onTap: () =>
-                                        settings.setVehicleIconSize(size),
+                                    onTap: o.select,
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 4,
@@ -172,7 +182,7 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                                         children: [
                                           Expanded(
                                             child: Text(
-                                              size,
+                                              o.label,
                                               style: const TextStyle(
                                                 fontSize: 13,
                                                 fontWeight: FontWeight.w500,
@@ -185,20 +195,12 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                                             child: Transform.scale(
                                               scale: 0.75,
                                               child: CupertinoSwitch(
-                                                value:
-                                                    settings
-                                                        .vehicleIconSize
-                                                        .value ==
-                                                    size,
+                                                value: o.selected,
                                                 activeColor: const Color(
                                                   0xFF00A3E0,
                                                 ),
                                                 onChanged: (on) {
-                                                  if (on) {
-                                                    settings.setVehicleIconSize(
-                                                      size,
-                                                    );
-                                                  }
+                                                  if (on) o.select();
                                                 },
                                               ),
                                             ),
@@ -208,8 +210,8 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
                                     ),
                                   ),
                               ],
-                            ),
-                          ),
+                            );
+                          }),
                         ),
                     ],
                   ),
@@ -220,5 +222,82 @@ class _GeneralSettingsContentState extends State<GeneralSettingsContent> {
         ],
       ),
     );
+  }
+
+  /// Choices for a row (one is always selected), same as the mobile app.
+  List<({String label, bool selected, VoidCallback select})> _options(
+    String title,
+    AppSettings s,
+  ) {
+    switch (title) {
+      case 'Vehicle Icon Size':
+        return [
+          for (final size in AppSettings.iconSizes)
+            (
+              label: size,
+              selected: s.vehicleIconSize.value == size,
+              select: () => s.setVehicleIconSize(size),
+            ),
+        ];
+      case 'Time Format':
+        return [
+          (
+            label: '24 hour',
+            selected: s.use24HourTime.value,
+            select: () => s.setUse24HourTime(true),
+          ),
+          (
+            label: '12 hour (AM/PM)',
+            selected: !s.use24HourTime.value,
+            select: () => s.setUse24HourTime(false),
+          ),
+        ];
+      case 'Speedometer':
+        return [
+          (
+            label: 'Show on Track',
+            selected: s.showSpeedometer.value,
+            select: () => s.setShowSpeedometer(true),
+          ),
+          (
+            label: 'Hide',
+            selected: !s.showSpeedometer.value,
+            select: () => s.setShowSpeedometer(false),
+          ),
+        ];
+      case 'Map Type':
+        return [
+          for (final t in AppSettings.mapTypes)
+            (
+              label: t,
+              selected: s.mapType.value == t,
+              select: () => s.setMapType(t),
+            ),
+        ];
+      case 'Speed':
+        return [
+          for (final e in AppSettings.speedUnits.entries)
+            (
+              label: e.value,
+              selected: s.speedUnit.value == e.key,
+              select: () => s.setSpeedUnit(e.key),
+            ),
+        ];
+      case 'Distance':
+        return [
+          for (final e in AppSettings.distanceUnits.entries)
+            (
+              label: e.value,
+              selected: s.distanceUnit.value == e.key,
+              select: () => s.setDistanceUnit(e.key),
+            ),
+        ];
+    }
+    return const [];
+  }
+
+  String _currentLabel(String title, AppSettings s) {
+    final selected = _options(title, s).where((o) => o.selected);
+    return selected.isEmpty ? '' : selected.first.label;
   }
 }

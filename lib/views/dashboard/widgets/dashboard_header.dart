@@ -14,7 +14,7 @@ class DashboardHeader extends StatelessWidget {
 
   const DashboardHeader({
     super.key,
-    this.userName = 'John Doe',
+    this.userName = 'User',
     this.onNotificationTap,
     this.onProfileTap,
     this.onMenuTap,

@@ -1,14 +1,18 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:get/get.dart' hide FormData;
+import 'package:get/get.dart' hide FormData, Response;
+import 'package:latlong2/latlong.dart';
+
 import '../config/api_config.dart';
 import '../config/dio_client.dart';
 import '../models/geofence_model.dart';
+import '../services/lookups_service.dart';
 import '../utils/app_toast.dart';
 
 class GeofenceController extends GetxController {
   final geofences = <GeofenceModel>[].obs;
   final isLoading = false.obs;
+  final isSaving = false.obs;
   final searchQuery = ''.obs;
 
   final syncedVehicles = <GeofenceVehicleItem>[].obs;
@@ -17,7 +21,11 @@ class GeofenceController extends GetxController {
 
   final vehicleSyncedGeofencesList = <GeofenceModel>[].obs;
   final vehicleUnsyncedGeofencesList = <GeofenceModel>[].obs;
+  final isVehicleGeofencesLoading = false.obs;
+
+  /// Geofences linked to the vehicle open on Track, drawn on its map.
   final vehicleGeofencesMapOverlayList = <GeofenceModel>[].obs;
+  int? _overlayVehicleId;
 
   @override
   void onInit() {
@@ -42,38 +50,36 @@ class GeofenceController extends GetxController {
     }).toList();
   }
 
+  static List<GeofenceModel> _geofencesFrom(dynamic body) {
+    dynamic list;
+    if (body is Map) {
+      final data = body['data'];
+      if (data is Map) {
+        list = data['geofences'];
+      } else if (data is List) {
+        list = data;
+      } else {
+        list = body['geofences'];
+      }
+    }
+    if (list is! List) return const [];
+    return list
+        .whereType<Map>()
+        .map((j) => GeofenceModel.fromJson(Map<String, dynamic>.from(j)))
+        .toList();
+  }
+
   /// Fetch all user created geofences (GET /geofences)
   Future<void> fetchGeofences({String? keyword}) async {
     try {
       isLoading.value = true;
       final q = keyword ?? searchQuery.value.trim();
-
       final response = await DioClient().get(
         ApiEndPoints.geofences,
-        queryParameters: {'limit': '50', if (q.isNotEmpty) 'keyword': q},
+        queryParameters: {'limit': '100', if (q.isNotEmpty) 'keyword': q},
       );
-
-      if (response.data != null) {
-        final data = response.data;
-        List<dynamic>? rawList;
-
-        if (data is Map) {
-          if (data['data'] != null && data['data'] is Map) {
-            rawList = data['data']['geofences'] as List<dynamic>?;
-          } else if (data['data'] is List) {
-            rawList = data['data'] as List<dynamic>?;
-          } else if (data['geofences'] is List) {
-            rawList = data['geofences'] as List<dynamic>?;
-          }
-        }
-
-        if (rawList != null) {
-          geofences.value = rawList
-              .map(
-                (json) => GeofenceModel.fromJson(json as Map<String, dynamic>),
-              )
-              .toList();
-        }
+      if (LookupsService.isOk(response)) {
+        geofences.assignAll(_geofencesFrom(response.data));
       }
     } catch (e) {
       debugPrint('Error fetching geofences: $e');
@@ -82,114 +88,100 @@ class GeofenceController extends GetxController {
     }
   }
 
-  /// Add new geofence (POST /add_geofence)
-  Future<bool> addGeofence({
+  /// Form for add_geofence / update_geofence, in the format the mobile app
+  /// sends: type circle | rectangle | polygon, radius and tolerance in km,
+  /// event_type 1/2/3, coordinates[i][lat|lng] for rectangle and polygon.
+  FormData _geofenceForm({
+    int? id,
     required String name,
-    required String type, // 'Circle' or 'Polygon'
+    required String shape,
     required String address,
     required String description,
-    double? latitude,
-    double? longitude,
-    double radius = 500,
-    int tolerance = 0,
-    String eventType = 'both',
-  }) async {
-    try {
-      isLoading.value = true;
-      final typeInt = type.toLowerCase() == 'polygon' ? 2 : 1;
-
-      final formData = FormData.fromMap({
-        'name': name,
-        'type': typeInt,
-        'tolerance': tolerance,
-        'event_type': eventType,
-        'address': address,
-        'description': description,
-        'latitude': latitude ?? 0.0,
-        'longitude': longitude ?? 0.0,
-        'radius': radius,
-      });
-
-      final response = await DioClient().post(
-        ApiEndPoints.addGeofence,
-        body: formData,
-      );
-
-      if (response.data != null && response.data['status'] == true) {
-        AppToast.show(
-          response.data['message']?.toString() ??
-              'Geofence created successfully',
-        );
-        await fetchGeofences();
-        return true;
-      } else {
-        final msg =
-            response.data?['message']?.toString() ??
-            'Failed to create geofence';
-        AppToast.show(msg, isError: true);
-        return false;
+    required LatLng center,
+    required double radiusMeters,
+    required List<LatLng> coordinates,
+    required int toleranceMeters,
+    required int eventCode,
+  }) {
+    final form = FormData();
+    void field(String k, String v) => form.fields.add(MapEntry(k, v));
+    if (id != null) field('id', '$id');
+    field('name', name);
+    field('type', shape);
+    field('tolerance', (toleranceMeters / 1000).toStringAsFixed(3));
+    field('event_type', '$eventCode');
+    field('address', address.isEmpty ? name : address);
+    field('description', description);
+    field('is_active', '1');
+    if (shape == 'circle') {
+      field('latitude', center.latitude.toStringAsFixed(8));
+      field('longitude', center.longitude.toStringAsFixed(8));
+      field('radius', (radiusMeters / 1000).toStringAsFixed(4));
+    } else {
+      for (var i = 0; i < coordinates.length; i++) {
+        field('coordinates[$i][lat]', coordinates[i].latitude.toStringAsFixed(6));
+        field('coordinates[$i][lng]', coordinates[i].longitude.toStringAsFixed(6));
       }
-    } catch (e) {
-      AppToast.showErrorMessage(e);
-      return false;
-    } finally {
-      isLoading.value = false;
     }
+    return form;
   }
 
-  /// Update existing geofence (POST /update_geofence)
-  Future<bool> updateGeofence({
-    required int id,
+  /// Add (POST add_geofence) or, with [id], update (POST update_geofence).
+  Future<bool> saveGeofence({
+    int? id,
     required String name,
-    required String type,
+    required String shape,
     required String address,
     required String description,
-    double? latitude,
-    double? longitude,
-    double radius = 500,
-    int tolerance = 0,
-    String eventType = 'both',
+    required LatLng center,
+    required double radiusMeters,
+    required List<LatLng> coordinates,
+    required int toleranceMeters,
+    required int eventCode,
   }) async {
+    if (isSaving.value) return false;
+    isSaving.value = true;
     try {
-      isLoading.value = true;
-      final typeInt = type.toLowerCase() == 'polygon' ? 2 : 1;
-
-      final formData = FormData.fromMap({
-        'id': id,
-        'name': name,
-        'type': typeInt,
-        'tolerance': tolerance,
-        'event_type': eventType,
-        'address': address,
-        'description': description,
-        'latitude': latitude ?? 0.0,
-        'longitude': longitude ?? 0.0,
-        'radius': radius,
-      });
-
       final response = await DioClient().post(
-        ApiEndPoints.updateGeofence,
-        body: formData,
+        id == null ? ApiEndPoints.addGeofence : ApiEndPoints.updateGeofence,
+        body: _geofenceForm(
+          id: id,
+          name: name,
+          shape: shape,
+          address: address,
+          description: description,
+          center: center,
+          radiusMeters: radiusMeters,
+          coordinates: coordinates,
+          toleranceMeters: toleranceMeters,
+          eventCode: eventCode,
+        ),
       );
-
-      if (response.data != null && response.data['status'] == true) {
+      if (LookupsService.isOk(response)) {
         AppToast.show(
-          response.data['message']?.toString() ?? 'Geofence updated',
+          LookupsService.messageOf(
+            response,
+            fallback: id == null ? 'Geofence created' : 'Geofence updated',
+          ),
         );
         await fetchGeofences();
         return true;
-      } else {
-        final msg =
-            response.data?['message']?.toString() ??
-            'Failed to update geofence';
-        AppToast.show(msg, isError: true);
-        return false;
       }
+      AppToast.show(
+        LookupsService.messageOf(
+          response,
+          fallback: id == null
+              ? 'Failed to create geofence'
+              : 'Failed to update geofence',
+        ),
+        isError: true,
+      );
+      return false;
     } catch (e) {
       AppToast.showErrorMessage(e);
       return false;
     } finally {
-      isLoading.value = false;
+      isSaving.value = false;
     }
   }
 
@@ -197,26 +189,22 @@ class GeofenceController extends GetxController {
   Future<bool> deleteGeofence(int id) async {
     try {
       isLoading.value = true;
-      final formData = FormData.fromMap({'id': id});
-
       final response = await DioClient().post(
         ApiEndPoints.deleteGeofence,
-        body: formData,
+        body: FormData.fromMap({'id': id}),
       );
-
-      if (response.data != null && response.data['status'] == true) {
+      if (LookupsService.isOk(response)) {
         AppToast.show(
-          response.data['message']?.toString() ?? 'Geofence deleted',
+          LookupsService.messageOf(response, fallback: 'Geofence deleted'),
         );
         geofences.removeWhere((g) => g.id == id);
         return true;
-      } else {
-        final msg =
-            response.data?['message']?.toString() ??
-            'Failed to delete geofence';
-        AppToast.show(msg, isError: true);
-        return false;
       }
+      AppToast.show(
+        LookupsService.messageOf(response, fallback: 'Failed to delete geofence'),
+        isError: true,
+      );
+      return false;
     } catch (e) {
       AppToast.showErrorMessage(e);
       return false;
@@ -225,79 +213,157 @@ class GeofenceController extends GetxController {
     }
   }
 
-  /// Load vehicles linked and not linked to a specific geofence (GET /geofence_synced_vehicles & GET /geofence_unsynced_vehicles)
+  static List<GeofenceVehicleItem> _vehiclesFrom(dynamic body, bool selected) {
+    dynamic list;
+    if (body is Map) {
+      final data = body['data'];
+      list = data is Map ? data['vehicles'] : data;
+    }
+    if (list is! List) return const [];
+    return list
+        .whereType<Map>()
+        .map(
+          (j) => GeofenceVehicleItem.fromJson(
+            Map<String, dynamic>.from(j),
+            isSelected: selected,
+          ),
+        )
+        .toList();
+  }
+
+  /// Vehicles linked / not linked to a geofence
+  /// (GET geofence_synced_vehicles, geofence_unsynced_vehicles).
   Future<void> fetchGeofenceVehicles(int geofenceId) async {
     try {
       isVehicleLoading.value = true;
-
-      final responseSynced = await DioClient().get(
-        ApiEndPoints.geofenceSyncedVehicles,
-        queryParameters: {'geofence_id': geofenceId.toString()},
+      syncedVehicles.clear();
+      unsyncedVehicles.clear();
+      final query = {'geofence_id': '$geofenceId'};
+      final results = await Future.wait([
+        DioClient().get(ApiEndPoints.geofenceSyncedVehicles, queryParameters: query),
+        DioClient().get(ApiEndPoints.geofenceUnsyncedVehicles, queryParameters: query),
+      ]);
+      syncedVehicles.assignAll(_vehiclesFrom(results[0].data, true));
+      final syncedIds = syncedVehicles.map((v) => v.id).toSet();
+      unsyncedVehicles.assignAll(
+        _vehiclesFrom(results[1].data, false)
+            .where((v) => !syncedIds.contains(v.id)),
       );
-
-      final responseUnsynced = await DioClient().get(
-        ApiEndPoints.geofenceUnsyncedVehicles,
-        queryParameters: {'geofence_id': geofenceId.toString()},
-      );
-
-      List<GeofenceVehicleItem> synced = [];
-      if (responseSynced.data != null) {
-        final raw = responseSynced.data['data'];
-        if (raw is List) {
-          synced = raw
-              .map((j) => GeofenceVehicleItem.fromJson(j, isSelected: true))
-              .toList();
-        }
-      }
-
-      List<GeofenceVehicleItem> unsynced = [];
-      if (responseUnsynced.data != null) {
-        final raw = responseUnsynced.data['data'];
-        if (raw is List) {
-          unsynced = raw
-              .map((j) => GeofenceVehicleItem.fromJson(j, isSelected: false))
-              .toList();
-        }
-      }
-
-      syncedVehicles.value = synced;
-      unsyncedVehicles.value = unsynced;
     } catch (e) {
-      debugPrint('Error fetching geofence vehicle matrices: $e');
+      debugPrint('Error fetching geofence vehicles: $e');
     } finally {
       isVehicleLoading.value = false;
     }
   }
 
-  /// Sync vehicles to a geofence (POST /sync_geofence_vehicles)
+  Future<Response> _postIds(
+    String path,
+    String ownerKey,
+    int ownerId,
+    String listKey,
+    List<int> ids,
+  ) {
+    final form = FormData();
+    form.fields.add(MapEntry(ownerKey, '$ownerId'));
+    for (var i = 0; i < ids.length; i++) {
+      form.fields.add(MapEntry('$listKey[$i]', '${ids[i]}'));
+    }
+    return DioClient().post(path, body: form);
+  }
+
+  Future<List<int>> _vehicleGeofenceIds(int vehicleId) async {
+    final r = await DioClient().get(
+      ApiEndPoints.vehicleSyncedGeofences,
+      queryParameters: {'vehicle_id': '$vehicleId'},
+    );
+    return _geofencesFrom(r.data).map((g) => g.id).toList();
+  }
+
+  Future<List<int>> _geofenceVehicleIds(int geofenceId) async {
+    final r = await DioClient().get(
+      ApiEndPoints.geofenceSyncedVehicles,
+      queryParameters: {'geofence_id': '$geofenceId'},
+    );
+    return _vehiclesFrom(r.data, true).map((v) => v.id).toList();
+  }
+
+  /// The sync APIs reject an empty list, so unlinking the last item is done
+  /// from the other side (as the mobile app does). Returns an error text, or
+  /// null when every link was removed.
+  Future<String?> _unlink({
+    required int geofenceId,
+    required int vehicleId,
+  }) async {
+    final others = (await _vehicleGeofenceIds(vehicleId))
+        .where((id) => id != geofenceId)
+        .toList();
+    if (others.isNotEmpty) {
+      final r = await _postIds(
+        ApiEndPoints.syncVehicleGeofences,
+        'vehicle_id',
+        vehicleId,
+        'geofence_ids',
+        others,
+      );
+      return LookupsService.isOk(r)
+          ? null
+          : LookupsService.messageOf(r, fallback: 'Failed to unlink');
+    }
+    final otherVehicles = (await _geofenceVehicleIds(geofenceId))
+        .where((id) => id != vehicleId)
+        .toList();
+    if (otherVehicles.isNotEmpty) {
+      final r = await _postIds(
+        ApiEndPoints.syncGeofenceVehicles,
+        'geofence_id',
+        geofenceId,
+        'vehicle_ids',
+        otherVehicles,
+      );
+      return LookupsService.isOk(r)
+          ? null
+          : LookupsService.messageOf(r, fallback: 'Failed to unlink');
+    }
+    return 'The server cannot remove the last link between a vehicle and a '
+        'geofence yet';
+  }
+
+  /// Link exactly [vehicleIds] to a geofence (POST sync_geofence_vehicles,
+  /// vehicle_ids[i]); unticked vehicles are unlinked.
   Future<bool> syncGeofenceVehicles(
     int geofenceId,
-    List<int> vehicleIds,
-  ) async {
+    List<int> vehicleIds, {
+    List<int> previouslySynced = const [],
+  }) async {
     try {
       isVehicleLoading.value = true;
-      final formData = FormData.fromMap({
-        'geofence_id': geofenceId,
-        'vehicle_ids': vehicleIds,
-      });
-
-      final response = await DioClient().post(
-        ApiEndPoints.syncGeofenceVehicles,
-        body: formData,
-      );
-
-      if (response.data != null && response.data['status'] == true) {
-        AppToast.show(
-          response.data['message']?.toString() ??
-              'Synced vehicles successfully',
+      if (vehicleIds.isNotEmpty) {
+        final r = await _postIds(
+          ApiEndPoints.syncGeofenceVehicles,
+          'geofence_id',
+          geofenceId,
+          'vehicle_ids',
+          vehicleIds,
         );
+        if (!LookupsService.isOk(r)) {
+          AppToast.show(
+            LookupsService.messageOf(r, fallback: 'Failed to sync vehicles'),
+            isError: true,
+          );
+          return false;
+        }
+        AppToast.show(LookupsService.messageOf(r, fallback: 'Vehicles updated'));
         return true;
-      } else {
-        final msg =
-            response.data?['message']?.toString() ?? 'Failed to sync vehicles';
-        AppToast.show(msg, isError: true);
-        return false;
       }
+      for (final v in previouslySynced) {
+        final err = await _unlink(geofenceId: geofenceId, vehicleId: v);
+        if (err != null) {
+          AppToast.show(err, isError: true);
+          return false;
+        }
+      }
+      AppToast.show('Vehicles updated');
+      return true;
     } catch (e) {
       AppToast.showErrorMessage(e);
       return false;
@@ -306,124 +372,99 @@ class GeofenceController extends GetxController {
     }
   }
 
-  /// Sync geofences to a single vehicle (POST /sync_vehicle_geofences)
+  /// Link exactly [geofenceIds] to a vehicle (POST sync_vehicle_geofences,
+  /// geofence_ids[i]); unticked geofences are unlinked.
   Future<bool> syncVehicleGeofences(
     int vehicleId,
-    List<int> geofenceIds,
-  ) async {
+    List<int> geofenceIds, {
+    List<int> previouslySynced = const [],
+  }) async {
     try {
-      isLoading.value = true;
-      final formData = FormData.fromMap({
-        'vehicle_id': vehicleId,
-        'geofence_ids': geofenceIds,
-      });
-
-      final response = await DioClient().post(
-        ApiEndPoints.syncVehicleGeofences,
-        body: formData,
-      );
-
-      if (response.data != null && response.data['status'] == true) {
-        AppToast.show(
-          response.data['message']?.toString() ??
-              'Synced geofences successfully',
+      isVehicleGeofencesLoading.value = true;
+      if (geofenceIds.isNotEmpty) {
+        final r = await _postIds(
+          ApiEndPoints.syncVehicleGeofences,
+          'vehicle_id',
+          vehicleId,
+          'geofence_ids',
+          geofenceIds,
         );
-        return true;
+        if (!LookupsService.isOk(r)) {
+          AppToast.show(
+            LookupsService.messageOf(r, fallback: 'Failed to sync geofences'),
+            isError: true,
+          );
+          return false;
+        }
+        AppToast.show(
+          LookupsService.messageOf(r, fallback: 'Geofences synced for vehicle'),
+        );
       } else {
-        final msg =
-            response.data?['message']?.toString() ?? 'Failed to sync geofences';
-        AppToast.show(msg, isError: true);
-        return false;
+        for (final g in previouslySynced) {
+          final err = await _unlink(geofenceId: g, vehicleId: vehicleId);
+          if (err != null) {
+            AppToast.show(err, isError: true);
+            return false;
+          }
+        }
+        AppToast.show('Geofences unsynced for vehicle');
       }
+      if (_overlayVehicleId == vehicleId) {
+        await fetchVehicleGeofences(vehicleId);
+      }
+      return true;
     } catch (e) {
       AppToast.showErrorMessage(e);
       return false;
     } finally {
-      isLoading.value = false;
+      isVehicleGeofencesLoading.value = false;
     }
   }
 
-  /// Fetch geofences synced to a specific vehicle (GET /vehicle_synced_geofences)
-  Future<void> fetchVehicleSyncedGeofences(int vehicleId) async {
+  /// Geofences linked and not linked to a vehicle
+  /// (GET vehicle_synced_geofences, vehicle_unsynced_geofences).
+  Future<void> fetchVehicleGeofenceLists(int vehicleId) async {
     try {
-      isLoading.value = true;
-      final response = await DioClient().get(
-        ApiEndPoints.vehicleSyncedGeofences,
-        queryParameters: {'vehicle_id': vehicleId.toString()},
+      isVehicleGeofencesLoading.value = true;
+      vehicleSyncedGeofencesList.clear();
+      vehicleUnsyncedGeofencesList.clear();
+      final query = {'vehicle_id': '$vehicleId'};
+      final results = await Future.wait([
+        DioClient().get(ApiEndPoints.vehicleSyncedGeofences, queryParameters: query),
+        DioClient().get(ApiEndPoints.vehicleUnsyncedGeofences, queryParameters: query),
+      ]);
+      vehicleSyncedGeofencesList.assignAll(_geofencesFrom(results[0].data));
+      final synced = vehicleSyncedGeofencesList.map((g) => g.id).toSet();
+      vehicleUnsyncedGeofencesList.assignAll(
+        _geofencesFrom(results[1].data).where((g) => !synced.contains(g.id)),
       );
-
-      if (response.data != null && response.data['data'] != null) {
-        final raw = response.data['data'];
-        if (raw is List) {
-          vehicleSyncedGeofencesList.value = raw
-              .map((j) => GeofenceModel.fromJson(j as Map<String, dynamic>))
-              .toList();
-        }
-      }
     } catch (e) {
-      debugPrint('Error fetching vehicle synced geofences: $e');
+      debugPrint('Error fetching vehicle geofences: $e');
     } finally {
-      isLoading.value = false;
+      isVehicleGeofencesLoading.value = false;
     }
   }
 
-  /// Fetch geofences unsynced to a specific vehicle (GET /vehicle_unsynced_geofences)
-  Future<void> fetchVehicleUnsyncedGeofences(int vehicleId) async {
-    try {
-      isLoading.value = true;
-      final response = await DioClient().get(
-        ApiEndPoints.vehicleUnsyncedGeofences,
-        queryParameters: {'vehicle_id': vehicleId.toString()},
-      );
-
-      if (response.data != null && response.data['data'] != null) {
-        final raw = response.data['data'];
-        if (raw is List) {
-          vehicleUnsyncedGeofencesList.value = raw
-              .map((j) => GeofenceModel.fromJson(j as Map<String, dynamic>))
-              .toList();
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching vehicle unsynced geofences: $e');
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  /// Fetch full geometry geofences assigned to a vehicle for map overlay (GET /vehicle_geofences)
+  /// Full geometry of the geofences linked to a vehicle, for the Track map
+  /// (GET vehicle_geofences?vehicle_id=).
   Future<void> fetchVehicleGeofences(int vehicleId) async {
+    _overlayVehicleId = vehicleId;
     try {
-      isLoading.value = true;
       final response = await DioClient().get(
         ApiEndPoints.vehicleGeofences,
-        queryParameters: {'vehicle_id': vehicleId.toString()},
+        queryParameters: {'vehicle_id': '$vehicleId'},
       );
-
-      if (response.data != null) {
-        final data = response.data;
-        List<dynamic>? rawList;
-
-        if (data is Map) {
-          if (data['data'] != null && data['data'] is Map) {
-            rawList = data['data']['geofences'] as List<dynamic>?;
-          } else if (data['data'] is List) {
-            rawList = data['data'] as List<dynamic>?;
-          } else if (data['geofences'] is List) {
-            rawList = data['geofences'] as List<dynamic>?;
-          }
-        }
-
-        if (rawList != null) {
-          vehicleGeofencesMapOverlayList.value = rawList
-              .map((j) => GeofenceModel.fromJson(j as Map<String, dynamic>))
-              .toList();
-        }
-      }
+      if (_overlayVehicleId != vehicleId) return;
+      vehicleGeofencesMapOverlayList.assignAll(
+        LookupsService.isOk(response) ? _geofencesFrom(response.data) : const [],
+      );
     } catch (e) {
       debugPrint('Error fetching vehicle geofences geometry: $e');
-    } finally {
-      isLoading.value = false;
     }
+  }
+
+  void clearVehicleGeofenceOverlay() {
+    _overlayVehicleId = null;
+    vehicleGeofencesMapOverlayList.clear();
   }
 }

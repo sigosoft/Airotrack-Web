@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airotrack_web/services/app_settings.dart';
 import 'package:get/get.dart';
 
 import '../../../controllers/location_controller.dart';
@@ -155,7 +156,7 @@ class VehicleDetailsDialog extends StatelessWidget {
               icon: Icons.access_time_rounded,
               label: 'Device Time',
               value: vehicle.lastUpdated.isNotEmpty
-                  ? vehicle.lastUpdated
+                  ? AppSettings.to.anyTime(vehicle.lastUpdated)
                   : 'N/A',
             ),
             const SizedBox(height: 10),
@@ -185,7 +186,7 @@ class VehicleDetailsDialog extends StatelessWidget {
               _buildDetailRow(
                 icon: Icons.speed_rounded,
                 label: 'Speed',
-                value: '${vehicle.speed} km/h',
+                value: AppSettings.to.units('${vehicle.speed} km/h'),
               ),
             ],
 
